@@ -19,7 +19,7 @@ variable "alerts" {
   description = "Alertas: gasto real acima de 85% e 100%, e previsto acima de 100%."
   type = list(object({
     threshold = number
-    type      = string 
+    type      = string
   }))
   default = [
     { threshold = 85, type = "ACTUAL" },

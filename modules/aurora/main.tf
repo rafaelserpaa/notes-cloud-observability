@@ -9,8 +9,8 @@ resource "aws_db_subnet_group" "this" {
 
 resource "aws_rds_cluster" "this" {
   cluster_identifier = var.cluster_identifier
-  engine             = "aurora-postgresql" 
-  engine_mode        = "provisioned"       
+  engine             = "aurora-postgresql"
+  engine_mode        = "provisioned"
   engine_version     = var.engine_version
   database_name      = var.database_name
   port               = 5432
@@ -33,7 +33,7 @@ resource "aws_rds_cluster" "this" {
   apply_immediately         = true
 
   serverlessv2_scaling_configuration {
-    min_capacity = var.min_capacity 
+    min_capacity = var.min_capacity
     max_capacity = var.max_capacity
 
     seconds_until_auto_pause = var.min_capacity == 0 ? var.seconds_until_auto_pause : null
