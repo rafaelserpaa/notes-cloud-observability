@@ -1,0 +1,10 @@
+# Copie para terraform.tfvars e ajuste. Os demais valores já têm como padrão
+# o que está na documentação da entrega.
+
+account_id    = "092304627167"
+budget_emails = ["seu-email@exemplo.com"]
+
+# image_tag = "v1-1.0.0"
+# desired_count = 2
+# db_min_acu    = 0
+# db_max_acu    = 2
