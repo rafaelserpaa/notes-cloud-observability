@@ -24,9 +24,9 @@ resource "aws_cloudfront_distribution" "this" {
     domain_name = var.origin_domain_name
 
     custom_origin_config {
-      http_port              = 80
+      http_port              = var.origin_http_port
       https_port             = 443
-      origin_protocol_policy = "https-only"
+      origin_protocol_policy = var.origin_protocol_policy
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }

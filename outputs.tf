@@ -50,3 +50,29 @@ output "ecs_service_name" {
 output "log_group_name" {
   value = module.ecs.log_group_name
 }
+
+# ------------------------------------------------------------------ observabilidade
+
+output "grafana_url" {
+  description = "Grafana público (HTTPS, login obrigatório)."
+  value       = var.enable_observability ? "https://${local.grafana_fqdn}" : null
+}
+
+output "grafana_admin_password" {
+  description = "Senha do usuário admin do Grafana (terraform output -raw grafana_admin_password)."
+  value       = var.enable_observability ? module.observability[0].grafana_admin_password : null
+  sensitive   = true
+}
+
+output "obs_instance_id" {
+  description = "Para o túnel do Alertmanager via Session Manager."
+  value       = var.enable_observability ? module.observability[0].instance_id : null
+}
+
+output "obs_otlp_endpoint" {
+  value = var.enable_observability ? module.observability[0].otlp_endpoint : null
+}
+
+output "loadgen_service_name" {
+  value = var.enable_observability ? module.loadgen[0].service_name : null
+}

@@ -25,8 +25,12 @@ O código já nasce na **topologia final**: HTTPS de ponta a ponta com ACM e
     ├── acm/                  # Passo 7.1 — certificado domínio + curinga, validação DNS
     ├── alb/                  # Passos 5.3 / 7.3 / 7.4 — ALB, tg-lab (IP), HTTPS:443, registro origin.
     ├── ecs/                  # Passo 5 — log group, execution role, cluster, task definition, service
-    └── cloudfront/           # Passos 6 / 7.5 / 7.6 — distribuição, alias app., registro app.
+    ├── cloudfront/           # Passos 6 / 7.5 / 7.6 — distribuição, alias app., registro app. (reusado para o Grafana)
+    ├── observability/        # EC2 lab-observabilidade (otel-lgtm + Alertmanager), sg obs, role, EIP, senha do Grafana
+    └── loadgen/              # service extra notas-loadgen (1 task que gera tráfego e logs)
 ```
+
+Também na raiz: `otel/Dockerfile.otel`, `loadgen/` (código + Dockerfile) e `scripts/build-push-otel.sh`.
 
 ## Dependências entre módulos
 
@@ -89,6 +93,29 @@ aws ecs describe-services --cluster lab-cluster --services lab-service \
 A evidência do `SELECT * FROM notas;` continua pelo RDS Query Editor: a Data
 API já vem habilitada, e os ARNs necessários saem em
 `terraform output aurora_cluster_arn` e `terraform output aurora_secret_arn`.
+
+## Observabilidade (OpenTelemetry)
+
+Ligada por `enable_observability` (padrão `true`). Cria a EC2 com `grafana/otel-lgtm`
+e Alertmanager, o CloudFront do Grafana (`https://grafana.<domínio>`), o service
+`notas-loadgen` e troca a aplicação para a imagem `2.0.0-otel` com as variáveis `OTEL_*`.
+
+Ordem (as imagens precisam existir no ECR antes do service subir):
+
+```bash
+terraform apply -target=module.ecr
+scripts/build-push-otel.sh /caminho/para/aula-06-cloud-cyber-app   # 2.0.0-otel e 1.0.0-loadgen
+terraform apply
+terraform output -raw grafana_admin_password    # login: admin
+```
+
+- **Alertmanager** só em loopback; túnel:
+  `aws ssm start-session --target $(terraform output -raw obs_instance_id) --document-name AWS-StartPortForwardingSession --parameters '{"portNumber":["9093"],"localPortNumber":["9093"]}'`
+- **Falha do Passo 9:** `terraform apply -var simulate_db_failure=true` remove a regra 5432 do sg `db`;
+  `-var simulate_db_failure=false` desfaz.
+- **Desligar o gerador de carga** (para o Aurora pausar): `-var loadgen_desired_count=0`.
+- **Fica manual** (de propósito): ligar o Alertmanager no Grafana (Alerting > Settings), o painel de SLI e a
+  regra de alerta (dependem dos nomes de métrica que você descobre no Metrics browser) e os prints.
 
 ## Convivência com a stack criada pelo console
 

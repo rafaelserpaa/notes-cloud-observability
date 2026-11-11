@@ -50,7 +50,15 @@ resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
   to_port                      = var.app_port
 }
 
+moved {
+  from = aws_vpc_security_group_ingress_rule.db_from_app
+  to   = aws_vpc_security_group_ingress_rule.db_from_app[0]
+}
+
+# Passo 9 (falha provocada): db_ingress_enabled = false remove esta regra.
 resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
+  count = var.db_ingress_enabled ? 1 : 0
+
   security_group_id            = aws_security_group.db.id
   description                  = "PostgreSQL, somente a partir das tasks"
   referenced_security_group_id = aws_security_group.app.id

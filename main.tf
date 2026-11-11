@@ -4,8 +4,22 @@ data "aws_route53_zone" "this" {
 }
 
 locals {
-  app_fqdn    = "${var.app_subdomain}.${var.domain_name}"
-  origin_fqdn = "${var.origin_subdomain}.${var.domain_name}"
+  app_fqdn     = "${var.app_subdomain}.${var.domain_name}"
+  origin_fqdn  = "${var.origin_subdomain}.${var.domain_name}"
+  grafana_fqdn = "${var.grafana_subdomain}.${var.domain_name}"
+
+  app_image = "${module.ecr.repository_url}:${var.enable_observability ? var.otel_image_tag : var.image_tag}"
+
+  # Passo 4: variáveis OTEL_* acrescentadas à task definition da aplicação.
+  otel_environment = var.enable_observability ? [
+    { name = "OTEL_SERVICE_NAME", value = "notas-da-nuvem" },
+    { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = module.observability[0].otlp_endpoint },
+    { name = "OTEL_EXPORTER_OTLP_PROTOCOL", value = "http/protobuf" },
+    { name = "OTEL_TRACES_EXPORTER", value = "otlp" },
+    { name = "OTEL_METRICS_EXPORTER", value = "otlp" },
+    { name = "OTEL_LOGS_EXPORTER", value = "otlp" },
+    { name = "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED", value = "true" },
+  ] : []
 }
 
 module "budget" {
@@ -30,9 +44,10 @@ module "network" {
 module "security_groups" {
   source = "./modules/security-groups"
 
-  vpc_id   = module.network.vpc_id
-  app_port = var.container_port
-  db_port  = 5432
+  vpc_id             = module.network.vpc_id
+  app_port           = var.container_port
+  db_port            = 5432
+  db_ingress_enabled = !var.simulate_db_failure
 }
 
 module "vpc_endpoints" {
@@ -102,7 +117,7 @@ module "ecs" {
 
   execution_role_name = "${var.project}-ecsTaskExecutionRole"
 
-  image          = "${module.ecr.repository_url}:${var.image_tag}"
+  image          = local.app_image
   container_name = var.container_name
   container_port = var.container_port
   task_cpu       = var.task_cpu
@@ -118,6 +133,8 @@ module "ecs" {
   db_name       = module.aurora.database_name
   db_secret_arn = module.aurora.master_user_secret_arn
 
+  extra_environment = local.otel_environment
+
   depends_on = [module.vpc_endpoints, module.alb]
 }
 
@@ -130,4 +147,53 @@ module "cloudfront" {
   certificate_arn    = module.acm.certificate_arn
   price_class        = var.cloudfront_price_class
   zone_id            = data.aws_route53_zone.this.zone_id
+}
+
+# ------------------------------------------------------------------ observabilidade
+# EC2 com grafana/otel-lgtm + Alertmanager, Grafana público só pelo CloudFront,
+# e um service extra (notas-loadgen) que gera tráfego e logs.
+
+module "observability" {
+  source = "./modules/observability"
+  count  = var.enable_observability ? 1 : 0
+
+  region                = var.region
+  vpc_id                = module.network.vpc_id
+  subnet_id             = module.network.public_subnet_ids[0]
+  app_security_group_id = module.security_groups.app_sg_id
+  instance_type         = var.obs_instance_type
+  grafana_fqdn          = local.grafana_fqdn
+}
+
+module "cloudfront_grafana" {
+  source = "./modules/cloudfront"
+  count  = var.enable_observability ? 1 : 0
+
+  comment                = "labnuvem-grafana"
+  origin_domain_name     = module.observability[0].public_dns
+  origin_protocol_policy = "http-only"
+  origin_http_port       = 3000
+  aliases                = [local.grafana_fqdn]
+  certificate_arn        = module.acm.certificate_arn
+  price_class            = var.cloudfront_price_class
+  zone_id                = data.aws_route53_zone.this.zone_id
+}
+
+module "loadgen" {
+  source = "./modules/loadgen"
+  count  = var.enable_observability ? 1 : 0
+
+  region             = var.region
+  cluster_name       = module.ecs.cluster_name
+  execution_role_arn = module.ecs.execution_role_arn
+  image              = "${module.ecr.repository_url}:${var.loadgen_image_tag}"
+  target_url         = "https://${local.app_fqdn}"
+  otlp_endpoint      = module.observability[0].otlp_endpoint
+  desired_count      = var.loadgen_desired_count
+
+  # Esta stack não tem NAT: para alcançar o CloudFront, o loadgen sobe em subnet
+  # pública com IP público. O sg app continua sem nenhuma entrada além do ALB.
+  subnet_ids        = module.network.public_subnet_ids
+  assign_public_ip  = true
+  security_group_id = module.security_groups.app_sg_id
 }

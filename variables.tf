@@ -69,7 +69,7 @@ variable "db_cluster_identifier" {
 variable "db_engine_version" {
   description = "Versão do Aurora PostgreSQL. Mínimo de 0 ACU exige 16.3+, 15.7+, 14.12+ ou 13.15+."
   type        = string
-  default     = "16.6"
+  default     = "16.15"
 }
 
 variable "db_name" {
@@ -185,4 +185,46 @@ variable "origin_subdomain" {
 variable "cloudfront_price_class" {
   type    = string
   default = "PriceClass_All"
+}
+
+# ------------------------------------------------------------------ observabilidade
+
+variable "enable_observability" {
+  description = "Liga a EC2 de observabilidade, o CloudFront do Grafana, o loadgen e a imagem OTel na aplicação."
+  type        = bool
+  default     = true
+}
+
+variable "otel_image_tag" {
+  description = "Tag da imagem da aplicação com opentelemetry-instrument (usada quando enable_observability = true)."
+  type        = string
+  default     = "2.0.0-otel"
+}
+
+variable "loadgen_image_tag" {
+  type    = string
+  default = "1.0.0-loadgen"
+}
+
+variable "loadgen_desired_count" {
+  description = "Tasks do notas-loadgen. Use 0 para desligar (com ele ligado o Aurora nunca pausa)."
+  type        = number
+  default     = 1
+}
+
+variable "obs_instance_type" {
+  type    = string
+  default = "t3.medium"
+}
+
+variable "grafana_subdomain" {
+  description = "Endereço público do Grafana (CloudFront), coberto pelo certificado curinga."
+  type        = string
+  default     = "grafana"
+}
+
+variable "simulate_db_failure" {
+  description = "Passo 9: true remove a regra 5432 do sg db e derruba o SLI. Volte para false para desfazer."
+  type        = bool
+  default     = false
 }

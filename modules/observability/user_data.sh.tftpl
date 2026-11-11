@@ -1,0 +1,49 @@
+#!/bin/bash
+# Bootstrap da EC2 de observabilidade (Fase 1 e 2 do passo a passo).
+# Roda uma única vez no primeiro boot; log em /var/log/obs-bootstrap.log.
+set -euo pipefail
+exec > >(tee /var/log/obs-bootstrap.log) 2>&1
+
+dnf install -y docker
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+docker network create obs-net || true
+
+# --- Alertmanager (sem receiver externo: o alerta aparece na interface dele) ---
+mkdir -p /opt/obs
+cat > /opt/obs/alertmanager.yml <<'EOF'
+route:
+  receiver: lab-default
+  group_by: [alertname]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 30m
+receivers:
+  - name: lab-default
+EOF
+chmod 644 /opt/obs/alertmanager.yml
+
+docker run -d --name alertmanager --network obs-net --restart unless-stopped \
+  -p 127.0.0.1:9093:9093 \
+  -v /opt/obs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro \
+  prom/alertmanager
+
+# --- Senha do Grafana: vem do Secrets Manager, nunca do user_data ---
+GFPASS=""
+for i in $(seq 1 30); do
+  GFPASS=$(aws secretsmanager get-secret-value --region ${region} \
+    --secret-id ${secret_arn} --query SecretString --output text) && break
+  sleep 10
+done
+[ -n "$GFPASS" ] || { echo "nao consegui ler a senha do Grafana"; exit 1; }
+
+# --- otel-lgtm: Grafana (3000) e OTLP HTTP (4318). A 4317 nao e publicada. ---
+docker run -d --name lgtm --network obs-net --restart unless-stopped \
+  -p 3000:3000 -p 4318:4318 \
+  -e GF_SECURITY_ADMIN_PASSWORD="$GFPASS" \
+  -e GF_USERS_ALLOW_SIGN_UP=false \
+  -e GF_AUTH_ANONYMOUS_ENABLED=false \
+  -e GF_SERVER_ROOT_URL=https://${grafana_fqdn} \
+  grafana/otel-lgtm
+unset GFPASS

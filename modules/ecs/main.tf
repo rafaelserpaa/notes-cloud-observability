@@ -75,12 +75,12 @@ resource "aws_ecs_task_definition" "this" {
       protocol      = "tcp"
     }]
 
-    environment = [
+    environment = concat([
       { name = "DB_HOST", value = var.db_host },
       { name = "DB_PORT", value = tostring(var.db_port) },
       { name = "DB_NAME", value = var.db_name },
       { name = "APP_PORT", value = tostring(var.container_port) },
-    ]
+    ], var.extra_environment)
 
     secrets = [
       { name = "DB_USER", valueFrom = "${var.db_secret_arn}:username::" },

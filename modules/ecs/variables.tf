@@ -85,3 +85,9 @@ variable "db_name" {
 variable "db_secret_arn" {
   type = string
 }
+
+variable "extra_environment" {
+  description = "Variáveis de ambiente adicionais (ex.: OTEL_*)."
+  type        = list(object({ name = string, value = string }))
+  default     = []
+}
