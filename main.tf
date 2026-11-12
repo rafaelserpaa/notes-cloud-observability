@@ -10,7 +10,6 @@ locals {
 
   app_image = "${module.ecr.repository_url}:${var.enable_observability ? var.otel_image_tag : var.image_tag}"
 
-  # Passo 4: variáveis OTEL_* acrescentadas à task definition da aplicação.
   otel_environment = var.enable_observability ? [
     { name = "OTEL_SERVICE_NAME", value = "notas-da-nuvem" },
     { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = module.observability[0].otlp_endpoint },
@@ -149,9 +148,6 @@ module "cloudfront" {
   zone_id            = data.aws_route53_zone.this.zone_id
 }
 
-# ------------------------------------------------------------------ observabilidade
-# EC2 com grafana/otel-lgtm + Alertmanager, Grafana público só pelo CloudFront,
-# e um service extra (notas-loadgen) que gera tráfego e logs.
 
 module "observability" {
   source = "./modules/observability"
@@ -191,8 +187,6 @@ module "loadgen" {
   otlp_endpoint      = module.observability[0].otlp_endpoint
   desired_count      = var.loadgen_desired_count
 
-  # Esta stack não tem NAT: para alcançar o CloudFront, o loadgen sobe em subnet
-  # pública com IP público. O sg app continua sem nenhuma entrada além do ALB.
   subnet_ids        = module.network.public_subnet_ids
   assign_public_ip  = true
   security_group_id = module.security_groups.app_sg_id

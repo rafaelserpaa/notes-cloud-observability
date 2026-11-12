@@ -51,7 +51,6 @@ output "log_group_name" {
   value = module.ecs.log_group_name
 }
 
-# ------------------------------------------------------------------ observabilidade
 
 output "grafana_url" {
   description = "Grafana público (HTTPS, login obrigatório)."
