@@ -7,7 +7,6 @@ data "aws_ssm_parameter" "al2023" {
   name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
 }
 
-# ---------------------------------------------------------------- senha do Grafana
 
 resource "random_password" "grafana" {
   length  = 24
@@ -17,7 +16,7 @@ resource "random_password" "grafana" {
 resource "aws_secretsmanager_secret" "grafana" {
   name                    = var.grafana_secret_name
   description             = "Senha do admin do Grafana (lab de observabilidade)"
-  recovery_window_in_days = 0 # lab: permite recriar com o mesmo nome logo após o destroy
+  recovery_window_in_days = 0 
 }
 
 resource "aws_secretsmanager_secret_version" "grafana" {
@@ -25,7 +24,26 @@ resource "aws_secretsmanager_secret_version" "grafana" {
   secret_string = random_password.grafana.result
 }
 
-# ---------------------------------------------------------------- IAM
+
+locals {
+  discord_enabled = nonsensitive(var.discord_webhook_url != null)
+}
+
+resource "aws_secretsmanager_secret" "discord_webhook" {
+  count = local.discord_enabled ? 1 : 0
+
+  name                    = var.discord_secret_name
+  description             = "URL do webhook do Discord usada pelo Alertmanager"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "discord_webhook" {
+  count = local.discord_enabled ? 1 : 0
+
+  secret_id     = aws_secretsmanager_secret.discord_webhook[0].id
+  secret_string = var.discord_webhook_url
+}
+
 
 resource "aws_iam_role" "this" {
   name = var.role_name
@@ -45,22 +63,24 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# Do passo a passo: permite buildar e dar push das imagens a partir da própria EC2.
 resource "aws_iam_role_policy_attachment" "ecr" {
   role       = aws_iam_role.this.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
 }
 
 resource "aws_iam_role_policy" "read_grafana_secret" {
-  name = "read-grafana-secret"
+  name = "read-obs-secrets"
   role = aws_iam_role.this.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["secretsmanager:GetSecretValue"]
-      Resource = [aws_secretsmanager_secret.grafana.arn]
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = concat(
+        [aws_secretsmanager_secret.grafana.arn],
+        aws_secretsmanager_secret.discord_webhook[*].arn,
+      )
     }]
   })
 }
@@ -70,7 +90,6 @@ resource "aws_iam_instance_profile" "this" {
   role = aws_iam_role.this.name
 }
 
-# ---------------------------------------------------------------- sg-obs
 
 resource "aws_security_group" "this" {
   name        = var.security_group_name
@@ -104,7 +123,6 @@ resource "aws_vpc_security_group_egress_rule" "all" {
   cidr_ipv4         = "0.0.0.0/0"
 }
 
-# ---------------------------------------------------------------- EC2
 
 resource "aws_instance" "this" {
   ami                         = data.aws_ssm_parameter.al2023.value
@@ -112,18 +130,19 @@ resource "aws_instance" "this" {
   subnet_id                   = var.subnet_id
   vpc_security_group_ids      = [aws_security_group.this.id]
   iam_instance_profile        = aws_iam_instance_profile.this.name
-  associate_public_ip_address = true # saída para a internet no boot, antes do EIP associar
-  # sem key pair: acesso só por Session Manager
+  associate_public_ip_address = true 
 
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    region       = var.region
-    secret_arn   = aws_secretsmanager_secret.grafana.arn
-    grafana_fqdn = var.grafana_fqdn
+    region             = var.region
+    secret_arn         = aws_secretsmanager_secret.grafana.arn
+    grafana_fqdn       = var.grafana_fqdn
+    alertmanager_image = var.alertmanager_image
+    discord_secret_arn = local.discord_enabled ? aws_secretsmanager_secret.discord_webhook[0].arn : ""
   })
   user_data_replace_on_change = true
 
   metadata_options {
-    http_tokens = "required" # IMDSv2
+    http_tokens = "required" 
   }
 
   root_block_device {
@@ -135,18 +154,16 @@ resource "aws_instance" "this" {
   tags = { Name = var.name }
 
   lifecycle {
-    # AMI "latest" muda sozinha; sem isso uma AMI nova recriaria a instância (e o lgtm começaria vazio).
     ignore_changes = [ami]
   }
 
   depends_on = [
     aws_secretsmanager_secret_version.grafana,
+    aws_secretsmanager_secret_version.discord_webhook,
     aws_iam_role_policy.read_grafana_secret,
   ]
 }
 
-# IP fixo: o DNS público não muda se a instância for parada e iniciada,
-# então a origem do CloudFront do Grafana continua válida.
 resource "aws_eip" "this" {
   domain   = "vpc"
   instance = aws_instance.this.id

@@ -4,6 +4,9 @@
 account_id    = "092304627167"
 budget_emails = ["seu-email@exemplo.com"]
 
+# Alertas do Alertmanager no Discord (Canal > Integrações > Webhooks > Copiar URL).
+# discord_webhook_url = "https://discord.com/api/webhooks/<id>/<token>"
+
 # image_tag = "v1-1.0.0"
 # desired_count = 2
 # db_min_acu    = 0

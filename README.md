@@ -109,6 +109,11 @@ terraform apply
 terraform output -raw grafana_admin_password    # login: admin
 ```
 
+- **Alertas no Discord:** defina `discord_webhook_url` no `terraform.tfvars` (Canal > Editar canal >
+  Integrações > Webhooks > Copiar URL do webhook). A URL vai para o Secrets Manager
+  (`lab-obs/discord-webhook-url`) e a EC2 a lê no boot; o Alertmanager usa `discord_configs`
+  com `send_resolved: true`. Sem a variável, os alertas ficam só na interface do Alertmanager.
+  No Grafana, aponte o Alertmanager externo para `http://alertmanager:9093` (mesma rede Docker).
 - **Alertmanager** só em loopback; túnel:
   `aws ssm start-session --target $(terraform output -raw obs_instance_id) --document-name AWS-StartPortForwardingSession --parameters '{"portNumber":["9093"],"localPortNumber":["9093"]}'`
 - **Falha do Passo 9:** `terraform apply -var simulate_db_failure=true` remove a regra 5432 do sg `db`;

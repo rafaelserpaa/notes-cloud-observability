@@ -159,6 +159,7 @@ module "observability" {
   app_security_group_id = module.security_groups.app_sg_id
   instance_type         = var.obs_instance_type
   grafana_fqdn          = local.grafana_fqdn
+  discord_webhook_url   = var.discord_webhook_url
 }
 
 module "cloudfront_grafana" {

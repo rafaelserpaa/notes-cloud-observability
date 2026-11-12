@@ -223,6 +223,21 @@ variable "grafana_subdomain" {
   default     = "grafana"
 }
 
+variable "discord_webhook_url" {
+  description = "Webhook do Discord que recebe os alertas do Alertmanager. Deixe null para não notificar."
+  type        = string
+  default     = null
+  sensitive   = true
+
+  validation {
+    condition = var.discord_webhook_url == null || can(regex(
+      "^https://(discord|discordapp)\\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+$",
+      var.discord_webhook_url
+    ))
+    error_message = "Use a URL completa do webhook: https://discord.com/api/webhooks/<id>/<token>."
+  }
+}
+
 variable "simulate_db_failure" {
   description = "Passo 9: true remove a regra 5432 do sg db e derruba o SLI. Volte para false para desfazer."
   type        = bool

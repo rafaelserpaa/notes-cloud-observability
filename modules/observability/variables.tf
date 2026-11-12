@@ -15,7 +15,7 @@ variable "role_name" {
 
 variable "security_group_name" {
   type    = string
-  default = "obs" # a AWS não aceita nome de SG começando com "sg-"
+  default = "obs"  
 }
 
 variable "vpc_id" {
@@ -52,4 +52,23 @@ variable "grafana_secret_name" {
   description = "Nome do secret (Secrets Manager) com a senha do admin do Grafana."
   type        = string
   default     = "lab-obs/grafana-admin-password"
+}
+
+variable "discord_webhook_url" {
+  description = "URL do webhook do Discord para o Alertmanager. null = sem notificação externa."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "discord_secret_name" {
+  description = "Nome do secret (Secrets Manager) com a URL do webhook do Discord."
+  type        = string
+  default     = "lab-obs/discord-webhook-url"
+}
+
+variable "alertmanager_image" {
+  description = "Imagem do Alertmanager (>= v0.27 para discord_configs com webhook_url_file)."
+  type        = string
+  default     = "prom/alertmanager:v0.28.1"
 }
