@@ -1,6 +1,36 @@
+# Diretório local de providers/módulos baixados pelo `terraform init`
 .terraform/
-terraform.tfstate
-terraform.tfstate.*
-terraform.tfvars
-!.tfvars.example
+
+# State local e backups (contêm dados sensíveis, ex.: senhas, ARNs)
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# Planos salvos (`terraform plan -out=...`), podem conter segredos
+*.tfplan
+tfplan
+
+# Variáveis com valores reais; o exemplo continua versionado
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Overrides locais
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Logs de crash e config da CLI
+crash.log
+crash.*.log
+.terraformrc
+terraform.rc
+
+# Artefatos de build
 build/
+
+# SO / editor
+.DS_Store
+.idea/
+.vscode/
