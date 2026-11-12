@@ -15,7 +15,7 @@ variable "role_name" {
 
 variable "security_group_name" {
   type    = string
-  default = "obs"  
+  default = "obs"
 }
 
 variable "vpc_id" {

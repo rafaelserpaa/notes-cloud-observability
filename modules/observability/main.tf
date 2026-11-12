@@ -16,7 +16,7 @@ resource "random_password" "grafana" {
 resource "aws_secretsmanager_secret" "grafana" {
   name                    = var.grafana_secret_name
   description             = "Senha do admin do Grafana (lab de observabilidade)"
-  recovery_window_in_days = 0 
+  recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "grafana" {
@@ -130,7 +130,7 @@ resource "aws_instance" "this" {
   subnet_id                   = var.subnet_id
   vpc_security_group_ids      = [aws_security_group.this.id]
   iam_instance_profile        = aws_iam_instance_profile.this.name
-  associate_public_ip_address = true 
+  associate_public_ip_address = true
 
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
     region             = var.region
@@ -142,7 +142,7 @@ resource "aws_instance" "this" {
   user_data_replace_on_change = true
 
   metadata_options {
-    http_tokens = "required" 
+    http_tokens = "required"
   }
 
   root_block_device {
