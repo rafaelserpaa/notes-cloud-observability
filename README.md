@@ -3,7 +3,14 @@
 Tradução em módulos Terraform da arquitetura documentada na Entrega 1
 (aplicação **Notas da Nuvem** em `https://app.labdenuvemarquiteturavinicius.click`).
 O código já nasce na **topologia final**: HTTPS de ponta a ponta com ACM e
-**sem NAT Gateway**, com a saída das tasks só por VPC Endpoints.
+**sem NAT Gateway**, com a saída das tasks só por VPC Endpoints. Por cima dela fica a
+stack de **observabilidade** (OpenTelemetry, Prometheus, Tempo, Loki, Alertmanager → Discord
+e Grafana) em duas EC2.
+
+| Documento | Para quê |
+|---|---|
+| [GUIA.md](GUIA.md) | Passo a passo do lab: subir, tirar os 13 prints na ordem, simular a falha, destruir |
+| [ALTERACOES.md](ALTERACOES.md) | Histórico das mudanças, decisões, testes e custos (contexto para retomar o trabalho) |
 
 ## Estrutura
 
@@ -15,13 +22,18 @@ O código já nasce na **topologia final**: HTTPS de ponta a ponta com ACM e
 ├── main.tf                   # composição dos módulos
 ├── outputs.tf
 ├── terraform.tfvars.example
+├── Dockerfile                # targets app (Notas da Nuvem + OTel) e loadgen
+├── loadgen/loadgen.py        # gerador de tráfego
+├── scripts/
+│   ├── build-push.sh         # builda e envia app-2.2.0 e loadgen-1.1.0
+│   └── mirror-images.sh      # copia as imagens do backend de observabilidade para o ECR (linux/amd64)
 └── modules/
     ├── budget/               # Passo 1 — AWS Budgets (85% / 100% real, 100% previsto)
     ├── network/              # Passo 2 — VPC, 6 subnets em 2 AZs, IGW, route tables
     ├── security-groups/      # Passo 2.3 — alb → app → db, + endpoint
-    ├── vpc-endpoints/        # Passo 8 — ecr.api, ecr.dkr, secretsmanager, logs + S3 gateway
+    ├── vpc-endpoints/        # Passo 8 — ecr.api, ecr.dkr, secretsmanager, logs + S3 gateway (+ ssm* com observabilidade)
     ├── aurora/               # Passo 3 — subnet group, cluster Serverless v2, writer + reader
-    ├── ecr/                  # Passo 4 — repositório IMMUTABLE, scan on push
+    ├── ecr/                  # Passo 4 — repositório IMMUTABLE, scan on push (reusado para lab-obs/*)
     ├── acm/                  # Passo 7.1 — certificado domínio + curinga, validação DNS
     ├── alb/                  # Passos 5.3 / 7.3 / 7.4 — ALB, tg-lab (IP), HTTPS:443, registro origin.
     ├── ecs/                  # Passo 5 — log group, execution role, cluster, task definition, service
@@ -32,9 +44,7 @@ O código já nasce na **topologia final**: HTTPS de ponta a ponta com ACM e
     └── loadgen/              # service extra notas-loadgen (1 task que gera tráfego e logs)
 ```
 
-Também na raiz: `Dockerfile` multistage (targets `app` e `loadgen`, sobre a imagem pública
-`rafaelserpa/notas-da-nuvem:1.0.0`), `loadgen/loadgen.py`, `scripts/build-push.sh` e
-`scripts/mirror-images.sh` (espelha as imagens do backend de observabilidade no ECR).
+O `Dockerfile` é multistage sobre a imagem pública `rafaelserpa/notas-da-nuvem:1.0.0`.
 
 ## Dependências entre módulos
 
@@ -46,6 +56,9 @@ Também na raiz: `Dockerfile` multistage (targets `app` e `loadgen`, sobre a ima
 | alb | network, security-groups, acm |
 | ecs | network, security-groups, ecr, aurora, alb, vpc-endpoints |
 | cloudfront | acm, alb (registro `origin.`) |
+| obs_image_repos | — (repositórios `lab-obs/*` no ECR) |
+| observability | network, security-groups, vpc-endpoints, obs_image_repos |
+| loadgen | ecs (cluster e execution role), observability (endpoint OTLP) |
 
 O ECS só é criado depois que os endpoints existem, o listener HTTPS está ligado
 ao target group e a instância writer do Aurora está disponível.
@@ -104,18 +117,20 @@ Ligada por `enable_observability` (padrão `true`). Diferente da apostila (um ú
 container `grafana/otel-lgtm`), a stack fica em **duas camadas**:
 
 ```
-                      seu IP ──3000──▶ EC2 lab-obs-grafana   (Pub A, EIP, sg obs-grafana)
-                                             │ 9090 / 3200 / 3100 / 9093
-                                             ▼
-tasks app + loadgen ──OTLP/HTTP 4318──▶ EC2 lab-obs-backend  (PrivateFargate A, sem IP público, sg obs-backend)
+                      seu IP ──3000──▶ EC2 lab-obs-grafana   10.0.1.250  (Pub A, EIP, sg obs-grafana)
+                                         │  Grafana + squid (3128) ──443──▶ discord.com
+                                         │ 9090 / 3200 / 3100 / 9093          ▲
+                                         ▼                                    │ proxy_url
+tasks app + loadgen ──OTLP/HTTP 4318──▶ EC2 lab-obs-backend   10.0.11.250 (PrivateFargate A, sem IP público, sg obs-backend)
    (sg app)                               otel-collector ─┬─▶ Tempo       (traces, OTLP gRPC)
-                                                          ├─▶ Prometheus  (métricas, remote write) ─▶ Alertmanager ─▶ Discord
+                                                          ├─▶ Prometheus  (métricas, remote write) ─▶ Alertmanager
                                                           └─▶ Loki        (logs, OTLP nativo)
 ```
 
 | Security group | Entrada | Origem |
 |---|---|---|
 | `obs-grafana` | 3000 | só `grafana_allowed_cidrs` (seu IP /32; `0.0.0.0/0` é recusado pela validação) |
+| `obs-grafana` | 3128 | só `sg obs-backend` (squid: saída do Alertmanager para o Discord) |
 | `obs-backend` | 4318 | só `sg app` (tasks da aplicação e do loadgen) |
 | `obs-backend` | 9090, 3200, 3100, 9093 | só `sg obs-grafana` |
 | `endpoint` | 443 | `sg app`, `obs-backend`, `obs-grafana` |
@@ -125,6 +140,12 @@ AL2023), puxa as imagens dos repositórios `lab-obs/*` do ECR (espelhadas do Doc
 `scripts/mirror-images.sh`), lê o webhook do Discord pelo endpoint do Secrets Manager e é
 acessada pelo Session Manager (endpoints `ssm`, `ssmmessages` e `ec2messages`, criados só com a
 observabilidade ligada). O Grafana, na subnet pública, baixa a própria imagem pela internet.
+
+**Saída para o Discord:** VPC Endpoints só cobrem serviços da AWS, então o Alertmanager não
+alcança `discord.com` sozinho. A EC2 do Grafana roda um **squid** na 3128 que aceita só o IP do
+backend e só `CONNECT` 443 para `*.discord.com`; o Alertmanager usa `http_config.proxy_url`.
+Para os dois se conhecerem sem dependência circular, os IPs privados são fixos (`.250` de cada
+subnet, via `cidrhost`): backend `10.0.11.250`, Grafana `10.0.1.250`.
 
 **Roles separadas (menor privilégio):** `lab-obs-ec2` (backend: SSM, leitura do ECR, segredo do
 Discord) e `lab-obs-grafana` (SSM, segredo da senha do admin).
@@ -147,6 +168,10 @@ terraform output -raw grafana_admin_password    # login: admin
 
 O bootstrap leva alguns minutos depois que a instância fica *running*. Log em
 `/var/log/obs-bootstrap.log` nas duas EC2.
+
+> Qualquer mudança no `user_data` (configs em `modules/observability/config/` ou nos templates)
+> **recria as EC2** (`user_data_replace_on_change`): Prometheus, Tempo e Loki voltam vazios. Os IPs
+> privados são fixos, então as tasks não precisam de nova revisão por causa disso.
 
 ### O que já vem provisionado
 
@@ -179,10 +204,15 @@ Dockerfile (SDK 1.45.2, contrib 0.66b2).
 - **Shell no backend:** `aws ssm start-session --target $(terraform output -raw obs_backend_instance_id)`,
   depois `sudo docker ps`.
 - **Falha do Passo 9:** `terraform apply -var simulate_db_failure=true` remove a regra 5432 do sg `db`;
-  `-var simulate_db_failure=false` desfaz. O health check do ALB tem timeout de 10 s: o `/health`
+  `-var simulate_db_failure=false` (ou um `apply` sem a variável) desfaz. O health check do ALB tem timeout de 10 s: o `/health`
   demora ~5 s com o banco inalcançável (`connect_timeout`), e com o timeout padrão de 5 s o ALB
   derrubaria as tasks.
 - **Desligar o gerador de carga** (para o Aurora pausar): `-var loadgen_desired_count=0`.
+- **Conferir se o Discord foi notificado** (no backend):
+  `curl -s localhost:9093/metrics | grep 'alertmanager_notifications.*discord'`; `total` subindo
+  com `failed_total` em 0 = mensagem entregue. Erro `context deadline exceeded` = proxy inalcançável.
+- **Seu IP mudou e o Grafana não abre:** atualize `grafana_allowed_cidrs` e rode
+  `terraform apply -target='module.observability[0].aws_vpc_security_group_ingress_rule.grafana_ui'`.
 
 ### Evidências
 
@@ -196,10 +226,10 @@ Dockerfile (SDK 1.45.2, contrib 0.66b2).
 | 6 | SLI caindo + trace com erro | `simulate_db_failure=true` por ~2 min; o `POST /notas` vira 500 e o trace mostra a exceção do psycopg2 |
 | 7 | EC2 Terminated | Último print, depois do `terraform destroy` (que também remove os SGs `obs-*` e as roles `lab-obs-*`) |
 | 8 | Grafana na pública, backend na privada | EC2 > detalhes das duas instâncias (subnet, IP público / ausência dele) |
-| 9 | Regras dos SGs | `obs-grafana` e `obs-backend` (tabela acima) |
+| 9 | Regras dos SGs | `obs-grafana` (3000 do seu IP, 3128 do backend) e `obs-backend` (tabela acima) |
 | 10 | Containers do backend | Session Manager no backend → `sudo docker ps` |
 | 11 | Alertmanager no Grafana + regra no Prometheus | Connections > Data sources > Alertmanager; Alerting > Alert rules (data source Prometheus) |
-| 12 | Alerta disparando + Discord | Durante o Passo 9: Alerting > Alert rules / Alertmanager, e a mensagem no canal |
+| 12 | Alerta disparando + Discord | Durante o Passo 9 (o alerta leva ~2–3 min para disparar): Alerting > Alert rules / Alertmanager, e a mensagem no canal |
 | 13 | Gerador de tráfego | ECS > service `notas-loadgen` e, no Tempo, `{ resource.service.name = "notas-loadgen" }` / painel de requisições subindo |
 
 ### Onde medir o SLI (Seção 7)
@@ -249,8 +279,8 @@ não brigar com a `ecsTaskExecutionRole` da conta.
 
 ## Diferenças em relação ao console
 
-- **Sem NAT nem Elastic IP:** a configuração inicial (Passo 2.4) foi substituída no
-  Passo 8, então o código vai direto para os endpoints.
+- **Sem NAT:** a configuração inicial (Passo 2.4) foi substituída no Passo 8, então o código
+  vai direto para os endpoints. O único Elastic IP é o da EC2 do Grafana.
 - **Egress dos SGs:** o console cria "todo tráfego de saída" sozinho; aqui está
   declarado no módulo `security-groups`.
 - **Nome do service:** `lab-service` no lugar do nome gerado pelo console
@@ -259,13 +289,19 @@ não brigar com a `ecsTaskExecutionRole` da conta.
 
 ## Custos e destroy
 
-Os itens que cobram por hora mesmo parados: ALB, os 4 endpoints de interface
-(× 2 AZs) e o Aurora quando não está pausado. Ao fim do lab:
+Com tudo ligado o ambiente custa **~US$ 0,35–0,53/h** (US$ 8–13/dia). Os itens que cobram por
+hora mesmo parados: os 7 endpoints de interface (× 2 AZs, ~US$ 0,14/h), o ALB, as duas EC2 e o
+Aurora quando não está pausado (com o loadgen ligado ele nunca pausa). Detalhes em
+[ALTERACOES.md](ALTERACOES.md#custos). Ao fim do lab:
 
 ```bash
+# o repositório da aplicação tem force_delete = false: esvazie antes
+aws ecr batch-delete-image --repository-name labarquiteturanuvem \
+  --image-ids "$(aws ecr list-images --repository-name labarquiteturanuvem --query imageIds --output json)"
 terraform destroy
+terraform state list    # deve sobrar no máximo data.aws_route53_zone.this
 ```
 
-O Aurora está com `skip_final_snapshot = true` e sem deletion protection. O ECR
-tem `force_delete = false`: apague as imagens antes ou passe `force_delete = true`
-no módulo. O orçamento do Passo 1 também é removido no destroy.
+O Aurora está com `skip_final_snapshot = true` e sem deletion protection. Os repositórios
+`lab-obs/*` têm `force_delete = true`. O orçamento do Passo 1 também é removido no destroy.
+A hosted zone do Route 53 não é do Terraform e continua (US$ 0,50/mês).
