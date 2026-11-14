@@ -6,9 +6,13 @@
 #   terraform apply -target=module.obs_image_repos
 #   scripts/mirror-images.sh
 #
-# A cópia é registry -> registry (buildx imagetools): leva o índice multi-arch
-# inteiro, sem baixar as camadas para a máquina local. Tags que já existem no
-# ECR são puladas (os repositórios são IMMUTABLE).
+# Só a variante linux/amd64 é enviada, como imagem de plataforma única (a EC2 é
+# x86_64). Não use "docker buildx imagetools create" aqui: ele envia cada manifesto
+# de plataforma com a própria tag, e num repositório IMMUTABLE o primeiro (ex.:
+# ppc64le) fica preso na tag e o resto falha com 400.
+#
+# Tags que já existem são puladas se forem linux/amd64; se forem de outra
+# arquitetura (sobra de uma tentativa anterior), o script para e mostra como apagar.
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
@@ -27,9 +31,18 @@ while read -r source target; do
   tag="${target##*:}"
   if aws ecr describe-images --region "$AWS_REGION" --repository-name "$repo" \
        --image-ids imageTag="$tag" </dev/null >/dev/null 2>&1; then
-    echo "== $repo:$tag já existe, pulando"
-    continue
+    arch="$(docker buildx imagetools inspect "$target" --format '{{json .Image}}' </dev/null 2>/dev/null \
+      | jq -r 'if has("architecture") then .architecture else (.["linux/amd64"] | if . then "amd64" else "?" end) end')"
+    if [ "$arch" = "amd64" ]; then
+      echo "== $repo:$tag já existe (linux/amd64), pulando"
+      continue
+    fi
+    echo "!! $repo:$tag existe mas não é linux/amd64 (arch=$arch). Apague e rode de novo:"
+    echo "   aws ecr batch-delete-image --region $AWS_REGION --repository-name $repo --image-ids imageTag=$tag"
+    exit 1
   fi
-  echo ">> $source -> $target"
-  docker buildx imagetools create --tag "$target" "$source" </dev/null
+  echo ">> $source -> $target (linux/amd64)"
+  docker pull --quiet --platform linux/amd64 "$source" </dev/null
+  docker tag "$source" "$target"
+  docker push --quiet --platform linux/amd64 "$target" </dev/null
 done
