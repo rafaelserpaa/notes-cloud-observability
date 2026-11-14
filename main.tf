@@ -153,13 +153,14 @@ module "observability" {
   source = "./modules/observability"
   count  = var.enable_observability ? 1 : 0
 
-  region                = var.region
-  vpc_id                = module.network.vpc_id
-  subnet_id             = module.network.public_subnet_ids[0]
-  app_security_group_id = module.security_groups.app_sg_id
-  instance_type         = var.obs_instance_type
-  grafana_fqdn          = local.grafana_fqdn
-  discord_webhook_url   = var.discord_webhook_url
+  region                     = var.region
+  vpc_id                     = module.network.vpc_id
+  subnet_id                  = module.network.public_subnet_ids[0]
+  app_security_group_id      = module.security_groups.app_sg_id
+  endpoint_security_group_id = module.security_groups.endpoint_sg_id
+  instance_type              = var.obs_instance_type
+  grafana_fqdn               = local.grafana_fqdn
+  discord_webhook_url        = var.discord_webhook_url
 }
 
 module "cloudfront_grafana" {

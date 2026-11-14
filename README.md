@@ -30,7 +30,8 @@ O código já nasce na **topologia final**: HTTPS de ponta a ponta com ACM e
     └── loadgen/              # service extra notas-loadgen (1 task que gera tráfego e logs)
 ```
 
-Também na raiz: `otel/Dockerfile.otel`, `loadgen/` (código + Dockerfile) e `scripts/build-push-otel.sh`.
+Também na raiz: `Dockerfile` multistage (targets `app` e `loadgen`, sobre a imagem pública
+`rafaelserpa/notas-da-nuvem:1.0.0`), `loadgen/loadgen.py` e `scripts/build-push.sh`.
 
 ## Dependências entre módulos
 
@@ -98,13 +99,13 @@ API já vem habilitada, e os ARNs necessários saem em
 
 Ligada por `enable_observability` (padrão `true`). Cria a EC2 com `grafana/otel-lgtm`
 e Alertmanager, o CloudFront do Grafana (`https://grafana.<domínio>`), o service
-`notas-loadgen` e troca a aplicação para a imagem `2.0.0-otel` com as variáveis `OTEL_*`.
+`notas-loadgen` e troca a aplicação para a imagem `app-2.1.0` com as variáveis `OTEL_*`.
 
 Ordem (as imagens precisam existir no ECR antes do service subir):
 
 ```bash
 terraform apply -target=module.ecr
-scripts/build-push-otel.sh /caminho/para/aula-06-cloud-cyber-app   # 2.0.0-otel e 1.0.0-loadgen
+scripts/build-push.sh    # builda os 2 targets do Dockerfile e envia app-2.1.0 e loadgen-1.0.0
 terraform apply
 terraform output -raw grafana_admin_password    # login: admin
 ```
@@ -113,13 +114,14 @@ terraform output -raw grafana_admin_password    # login: admin
   Integrações > Webhooks > Copiar URL do webhook). A URL vai para o Secrets Manager
   (`lab-obs/discord-webhook-url`) e a EC2 a lê no boot; o Alertmanager usa `discord_configs`
   com `send_resolved: true`. Sem a variável, os alertas ficam só na interface do Alertmanager.
-  No Grafana, aponte o Alertmanager externo para `http://alertmanager:9093` (mesma rede Docker).
+- **Grafana → Alertmanager já vem ligado:** o bootstrap provisiona o data source `Alertmanager`
+  (`http://alertmanager:9093`, *Receive Grafana Alerts*) e põe Alerting > Settings em *External*.
 - **Alertmanager** só em loopback; túnel:
   `aws ssm start-session --target $(terraform output -raw obs_instance_id) --document-name AWS-StartPortForwardingSession --parameters '{"portNumber":["9093"],"localPortNumber":["9093"]}'`
 - **Falha do Passo 9:** `terraform apply -var simulate_db_failure=true` remove a regra 5432 do sg `db`;
   `-var simulate_db_failure=false` desfaz.
 - **Desligar o gerador de carga** (para o Aurora pausar): `-var loadgen_desired_count=0`.
-- **Fica manual** (de propósito): ligar o Alertmanager no Grafana (Alerting > Settings), o painel de SLI e a
+- **Fica manual** (de propósito): o painel de SLI e a
   regra de alerta (dependem dos nomes de métrica que você descobre no Metrics browser) e os prints.
 
 ## Convivência com a stack criada pelo console

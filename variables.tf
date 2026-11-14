@@ -196,14 +196,15 @@ variable "enable_observability" {
 }
 
 variable "otel_image_tag" {
-  description = "Tag da imagem da aplicação com opentelemetry-instrument (usada quando enable_observability = true)."
+  description = "Tag da imagem da aplicação instrumentada (target app do Dockerfile), usada quando enable_observability = true. ECR é IMMUTABLE: imagem nova = tag nova."
   type        = string
-  default     = "2.0.0-otel"
+  default     = "app-2.1.0"
 }
 
 variable "loadgen_image_tag" {
-  type    = string
-  default = "1.0.0-loadgen"
+  description = "Tag da imagem do gerador de carga (target loadgen do Dockerfile)."
+  type        = string
+  default     = "loadgen-1.0.0"
 }
 
 variable "loadgen_desired_count" {

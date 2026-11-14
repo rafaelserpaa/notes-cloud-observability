@@ -74,6 +74,25 @@ docker run -d --name alertmanager --network obs-net --restart unless-stopped \
 GFPASS=$(read_secret "${secret_arn}")
 [ -n "$GFPASS" ] || { echo "nao consegui ler a senha do Grafana"; exit 1; }
 
+# --- Data source do Alertmanager provisionado no Grafana ---
+# handleGrafanaManagedAlerts = "Receive Grafana Alerts": as regras criadas no Grafana
+# são entregues a este Alertmanager (que por sua vez notifica o Discord).
+# O arquivo é montado ao lado dos data sources padrão do otel-lgtm, sem substituí-los.
+cat > /opt/obs/grafana-alertmanager-datasource.yaml <<'EOF'
+apiVersion: 1
+datasources:
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    editable: false
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: true
+EOF
+chmod 644 /opt/obs/grafana-alertmanager-datasource.yaml
+
 # --- otel-lgtm: Grafana (3000) e OTLP HTTP (4318). A 4317 nao e publicada. ---
 docker run -d --name lgtm --network obs-net --restart unless-stopped \
   -p 3000:3000 -p 4318:4318 \
@@ -81,5 +100,18 @@ docker run -d --name lgtm --network obs-net --restart unless-stopped \
   -e GF_USERS_ALLOW_SIGN_UP=false \
   -e GF_AUTH_ANONYMOUS_ENABLED=false \
   -e GF_SERVER_ROOT_URL=https://${grafana_fqdn} \
-  grafana/otel-lgtm
+  -v /opt/obs/grafana-alertmanager-datasource.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/alertmanager.yaml:ro \
+  ${lgtm_image}
+
+# --- Grafana envia os alertas só para o Alertmanager externo ---
+# Equivale a Alerting > Settings > "External". Não existe arquivo de provisionamento
+# para isso, então vai pela API assim que o Grafana responder.
+for i in $(seq 1 60); do
+  curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break
+  sleep 5
+done
+curl -fsS -u "admin:$GFPASS" -X POST http://localhost:3000/api/v1/ngalert/admin_config \
+  -H 'Content-Type: application/json' \
+  -d '{"alertmanagersChoice":"external"}' \
+  || echo "AVISO: nao consegui ajustar alertmanagersChoice (faca em Alerting > Settings)"
 unset GFPASS

@@ -32,6 +32,11 @@ variable "app_security_group_id" {
   type        = string
 }
 
+variable "endpoint_security_group_id" {
+  description = "SG dos VPC Endpoints de interface; recebe a regra 443 vinda desta EC2."
+  type        = string
+}
+
 variable "instance_type" {
   type    = string
   default = "t3.medium"
@@ -71,4 +76,10 @@ variable "alertmanager_image" {
   description = "Imagem do Alertmanager (>= v0.27 para discord_configs com webhook_url_file)."
   type        = string
   default     = "prom/alertmanager:v0.28.1"
+}
+
+variable "lgtm_image" {
+  description = "Imagem do grafana/otel-lgtm (Grafana, Loki, Tempo, Prometheus e Collector OTel)."
+  type        = string
+  default     = "grafana/otel-lgtm"
 }

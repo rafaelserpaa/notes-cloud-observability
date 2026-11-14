@@ -116,6 +116,18 @@ resource "aws_vpc_security_group_ingress_rule" "otlp_from_app" {
   to_port                      = 4318
 }
 
+# Os VPC Endpoints de interface têm DNS privado: o Secrets Manager (senha do Grafana,
+# webhook do Discord) resolve para eles também a partir desta EC2. Sem esta regra o
+# SG "endpoint" descarta a conexão e o bootstrap trava em timeout.
+resource "aws_vpc_security_group_ingress_rule" "endpoint_from_obs" {
+  security_group_id            = var.endpoint_security_group_id
+  description                  = "HTTPS da EC2 de observabilidade para os servicos da AWS"
+  referenced_security_group_id = aws_security_group.this.id
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+}
+
 resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.this.id
   description       = "Saida liberada (pull de imagens, SSM, Secrets Manager)"
@@ -137,6 +149,7 @@ resource "aws_instance" "this" {
     secret_arn         = aws_secretsmanager_secret.grafana.arn
     grafana_fqdn       = var.grafana_fqdn
     alertmanager_image = var.alertmanager_image
+    lgtm_image         = var.lgtm_image
     discord_secret_arn = local.discord_enabled ? aws_secretsmanager_secret.discord_webhook[0].arn : ""
   })
   user_data_replace_on_change = true
@@ -158,6 +171,7 @@ resource "aws_instance" "this" {
   }
 
   depends_on = [
+    aws_vpc_security_group_ingress_rule.endpoint_from_obs,
     aws_secretsmanager_secret_version.grafana,
     aws_secretsmanager_secret_version.discord_webhook,
     aws_iam_role_policy.read_grafana_secret,
