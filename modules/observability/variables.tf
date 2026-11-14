@@ -58,6 +58,12 @@ variable "backend_subnet_id" {
   type        = string
 }
 
+variable "backend_host_number" {
+  description = "Host fixo dentro da subnet do backend (cidrhost). 250 fica longe dos IPs que a AWS distribui primeiro."
+  type        = number
+  default     = 250
+}
+
 variable "backend_instance_type" {
   type    = string
   default = "t3.medium"
@@ -99,6 +105,12 @@ variable "grafana_subnet_id" {
 variable "grafana_allowed_cidrs" {
   description = "CIDRs com acesso à 3000 (seu IP /32)."
   type        = list(string)
+}
+
+variable "grafana_host_number" {
+  description = "Host fixo dentro da subnet do Grafana (cidrhost)."
+  type        = number
+  default     = 250
 }
 
 variable "grafana_instance_type" {

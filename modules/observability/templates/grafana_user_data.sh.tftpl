@@ -11,7 +11,7 @@ retry() {
   return 1
 }
 
-retry dnf install -y docker
+retry dnf install -y docker squid
 systemctl enable --now docker
 usermod -aG docker ec2-user
 
@@ -33,6 +33,22 @@ ${dashboard_sli}
 OBS_EOF
 
 chmod -R a+rX /opt/grafana
+
+# --- Proxy de saída do Alertmanager (o backend não tem internet) ---
+# Só o IP do backend, só CONNECT 443 para *.discord.com; sem cache.
+cat > /etc/squid/squid.conf <<'OBS_EOF'
+http_port ${egress_proxy_port}
+acl backend src ${backend_host}/32
+acl discord dstdomain .discord.com .discordapp.com
+acl SSL_ports port 443
+acl CONNECT method CONNECT
+http_access deny CONNECT !SSL_ports
+http_access allow backend discord
+http_access deny all
+cache deny all
+access_log /var/log/squid/access.log
+OBS_EOF
+systemctl enable --now squid
 
 # --- Senha do admin: vem do Secrets Manager, nunca do user_data ---
 GFPASS=""

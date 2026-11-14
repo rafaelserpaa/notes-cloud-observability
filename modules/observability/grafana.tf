@@ -2,6 +2,7 @@ resource "aws_instance" "grafana" {
   ami                         = data.aws_ssm_parameter.al2023.value
   instance_type               = var.grafana_instance_type
   subnet_id                   = var.grafana_subnet_id
+  private_ip                  = local.grafana_private_ip
   vpc_security_group_ids      = [aws_security_group.grafana.id]
   iam_instance_profile        = aws_iam_instance_profile.grafana.name
   associate_public_ip_address = true
@@ -10,7 +11,8 @@ resource "aws_instance" "grafana" {
     region              = var.region
     secret_arn          = aws_secretsmanager_secret.grafana.arn
     grafana_image       = var.grafana_image
-    backend_host        = aws_instance.backend.private_ip
+    backend_host        = local.backend_private_ip
+    egress_proxy_port   = local.egress_proxy_port
     datasources         = trimspace(file("${path.module}/config/grafana-datasources.yaml"))
     dashboards_provider = trimspace(file("${path.module}/config/grafana-dashboards.yaml"))
     dashboard_sli       = trimspace(file("${path.module}/config/dashboard-sli.json"))

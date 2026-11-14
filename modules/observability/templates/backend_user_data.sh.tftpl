@@ -4,6 +4,7 @@
 #   - dnf (repositórios do AL2023 no S3) -> VPC Endpoint gateway do S3
 #   - imagens                            -> espelho no ECR (endpoints ecr.api/ecr.dkr + S3)
 #   - webhook do Discord                 -> endpoint do Secrets Manager
+#   - notificação para o Discord         -> squid na EC2 do Grafana (${egress_proxy_url})
 #   - acesso administrativo              -> Session Manager (endpoints ssm/ssmmessages/ec2messages)
 # Log em /var/log/obs-bootstrap.log.
 set -euo pipefail
@@ -78,6 +79,9 @@ receivers:
     discord_configs:
       - webhook_url_file: /etc/alertmanager/discord_webhook_url
         send_resolved: true
+        # Sem NAT: a saída para discord.com passa pelo squid da EC2 do Grafana.
+        http_config:
+          proxy_url: ${egress_proxy_url}
 OBS_EOF
 DISCORD_MOUNT="-v /opt/obs/discord_webhook_url:/etc/alertmanager/discord_webhook_url:ro"
 %{ else ~}

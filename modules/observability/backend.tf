@@ -2,6 +2,7 @@ resource "aws_instance" "backend" {
   ami                         = data.aws_ssm_parameter.al2023.value
   instance_type               = var.backend_instance_type
   subnet_id                   = var.backend_subnet_id
+  private_ip                  = local.backend_private_ip
   vpc_security_group_ids      = [aws_security_group.backend.id]
   iam_instance_profile        = aws_iam_instance_profile.this.name
   associate_public_ip_address = false
@@ -12,6 +13,7 @@ resource "aws_instance" "backend" {
     registry           = split("/", values(var.backend_images)[0])[0]
     images             = var.backend_images
     discord_secret_arn = local.discord_enabled ? aws_secretsmanager_secret.discord_webhook[0].arn : ""
+    egress_proxy_url   = "http://${local.grafana_private_ip}:${local.egress_proxy_port}"
     collector_config   = trimspace(file("${path.module}/config/otel-collector.yaml"))
     prometheus_config  = trimspace(file("${path.module}/config/prometheus.yml"))
     alert_rules        = trimspace(file("${path.module}/config/alert-rules.yml"))

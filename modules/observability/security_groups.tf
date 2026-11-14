@@ -1,4 +1,5 @@
-# sg obs-grafana: 3000 só a partir de var.grafana_allowed_cidrs (seu IP /32).
+# sg obs-grafana: 3000 só a partir de var.grafana_allowed_cidrs (seu IP /32);
+#                3128 (squid) só do sg obs-backend.
 # sg obs-backend: 4318 só do sg app; 9090/3200/3100/9093 só do sg obs-grafana.
 
 resource "aws_security_group" "grafana" {
@@ -17,6 +18,15 @@ resource "aws_vpc_security_group_ingress_rule" "grafana_ui" {
   ip_protocol       = "tcp"
   from_port         = 3000
   to_port           = 3000
+}
+
+resource "aws_vpc_security_group_ingress_rule" "proxy_from_backend" {
+  security_group_id            = aws_security_group.grafana.id
+  description                  = "Proxy de saida (squid) - Alertmanager do backend para o Discord"
+  referenced_security_group_id = aws_security_group.backend.id
+  ip_protocol                  = "tcp"
+  from_port                    = local.egress_proxy_port
+  to_port                      = local.egress_proxy_port
 }
 
 resource "aws_vpc_security_group_egress_rule" "grafana_all" {
