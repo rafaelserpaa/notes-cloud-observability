@@ -1,0 +1,58 @@
+# Data sources do Grafana, todos apontando para o IP privado da EC2 de backend.
+# ${OBS_BACKEND_HOST} é expandido pelo Grafana a partir da variável de ambiente do
+# container; $${...} é o escape para um ${...} literal.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://${OBS_BACKEND_HOST}:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://${OBS_BACKEND_HOST}:3200
+    editable: false
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        filterByTraceID: true
+        customQuery: false
+      nodeGraph:
+        enabled: true
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://${OBS_BACKEND_HOST}:3100
+    editable: false
+    jsonData:
+      derivedFields:
+        # trace_id chega como structured metadata (logs OTLP); vira link para o Tempo.
+        - name: TraceID
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: tempo
+          url: "$${__value.raw}"
+
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://${OBS_BACKEND_HOST}:9093
+    editable: false
+    jsonData:
+      implementation: prometheus
+      # "Receive Grafana Alerts": regras criadas no próprio Grafana também vão
+      # para este Alertmanager (e dele para o Discord).
+      handleGrafanaManagedAlerts: true

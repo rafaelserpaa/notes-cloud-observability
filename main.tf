@@ -4,9 +4,8 @@ data "aws_route53_zone" "this" {
 }
 
 locals {
-  app_fqdn     = "${var.app_subdomain}.${var.domain_name}"
-  origin_fqdn  = "${var.origin_subdomain}.${var.domain_name}"
-  grafana_fqdn = "${var.grafana_subdomain}.${var.domain_name}"
+  app_fqdn    = "${var.app_subdomain}.${var.domain_name}"
+  origin_fqdn = "${var.origin_subdomain}.${var.domain_name}"
 
   app_image = "${module.ecr.repository_url}:${var.enable_observability ? var.otel_image_tag : var.image_tag}"
 
@@ -19,6 +18,27 @@ locals {
     { name = "OTEL_LOGS_EXPORTER", value = "otlp" },
     { name = "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED", value = "true" },
   ] : []
+
+  # Além das 7 da apostila:
+  #  - detectores host + service_instance: cada task ganha host.name (hostname da task,
+  #    ip-10-0-1x-y...) e um service.instance.id próprio. É isso que separa as duas
+  #    tasks no Tempo (atributos de recurso) e no Prometheus (rótulos host_name e
+  #    service_instance_id, via resource_to_telemetry_conversion no Collector).
+  #  - semconv HTTP estável: nome de métrica fixo (http_server_request_duration_seconds,
+  #    rótulo http_response_status_code), usado pelas regras de alerta e pelo dashboard.
+  otel_identity_environment = var.enable_observability ? [
+    { name = "OTEL_EXPERIMENTAL_RESOURCE_DETECTORS", value = "host,service_instance" },
+    { name = "OTEL_SEMCONV_STABILITY_OPT_IN", value = "http" },
+  ] : []
+
+  # Imagens do backend de observabilidade: espelhadas do Docker Hub no ECR
+  # (scripts/mirror-images.sh), porque a EC2 privada não tem NAT.
+  obs_image_mirror = var.enable_observability ? {
+    for name, source in var.obs_backend_images : name => {
+      source = source
+      target = "${module.obs_image_repos[name].repository_url}:${element(split(":", source), length(split(":", source)) - 1)}"
+    }
+  } : {}
 }
 
 module "budget" {
@@ -51,6 +71,12 @@ module "security_groups" {
 
 module "vpc_endpoints" {
   source = "./modules/vpc-endpoints"
+
+  # ssm/ssmmessages/ec2messages: Session Manager na EC2 de backend, que não tem NAT.
+  interface_services = concat(
+    ["ecr.api", "ecr.dkr", "secretsmanager", "logs"],
+    var.enable_observability ? ["ssm", "ssmmessages", "ec2messages"] : [],
+  )
 
   region            = var.region
   vpc_id            = module.network.vpc_id
@@ -132,7 +158,7 @@ module "ecs" {
   db_name       = module.aurora.database_name
   db_secret_arn = module.aurora.master_user_secret_arn
 
-  extra_environment = local.otel_environment
+  extra_environment = concat(local.otel_environment, local.otel_identity_environment)
 
   depends_on = [module.vpc_endpoints, module.alb]
 }
@@ -149,32 +175,34 @@ module "cloudfront" {
 }
 
 
+module "obs_image_repos" {
+  source   = "./modules/ecr"
+  for_each = var.enable_observability ? var.obs_backend_images : {}
+
+  repository_name = "lab-obs/${each.key}"
+  force_delete    = true
+}
+
 module "observability" {
   source = "./modules/observability"
   count  = var.enable_observability ? 1 : 0
 
   region                     = var.region
   vpc_id                     = module.network.vpc_id
-  subnet_id                  = module.network.public_subnet_ids[0]
   app_security_group_id      = module.security_groups.app_sg_id
   endpoint_security_group_id = module.security_groups.endpoint_sg_id
-  instance_type              = var.obs_instance_type
-  grafana_fqdn               = local.grafana_fqdn
   discord_webhook_url        = var.discord_webhook_url
-}
 
-module "cloudfront_grafana" {
-  source = "./modules/cloudfront"
-  count  = var.enable_observability ? 1 : 0
+  backend_subnet_id     = module.network.app_subnet_ids[0]
+  backend_instance_type = var.obs_backend_instance_type
+  backend_images        = { for name, m in local.obs_image_mirror : name => m.target }
 
-  comment                = "labnuvem-grafana"
-  origin_domain_name     = module.observability[0].public_dns
-  origin_protocol_policy = "http-only"
-  origin_http_port       = 3000
-  aliases                = [local.grafana_fqdn]
-  certificate_arn        = module.acm.certificate_arn
-  price_class            = var.cloudfront_price_class
-  zone_id                = data.aws_route53_zone.this.zone_id
+  grafana_subnet_id     = module.network.public_subnet_ids[0]
+  grafana_instance_type = var.obs_grafana_instance_type
+  grafana_allowed_cidrs = var.grafana_allowed_cidrs
+  grafana_image         = var.grafana_image
+
+  depends_on = [module.vpc_endpoints]
 }
 
 module "loadgen" {
@@ -187,6 +215,7 @@ module "loadgen" {
   image              = "${module.ecr.repository_url}:${var.loadgen_image_tag}"
   target_url         = "https://${local.app_fqdn}"
   otlp_endpoint      = module.observability[0].otlp_endpoint
+  extra_environment  = local.otel_identity_environment
   desired_count      = var.loadgen_desired_count
 
   subnet_ids        = module.network.public_subnet_ids

@@ -1,0 +1,144 @@
+#!/bin/bash
+# Bootstrap da EC2 de backend (subnet privada, sem IP público, sem NAT).
+# Collector OTel, Prometheus, Tempo, Loki e Alertmanager, um container cada.
+#   - dnf (repositórios do AL2023 no S3) -> VPC Endpoint gateway do S3
+#   - imagens                            -> espelho no ECR (endpoints ecr.api/ecr.dkr + S3)
+#   - webhook do Discord                 -> endpoint do Secrets Manager
+#   - acesso administrativo              -> Session Manager (endpoints ssm/ssmmessages/ec2messages)
+# Log em /var/log/obs-bootstrap.log.
+set -euo pipefail
+exec > >(tee /var/log/obs-bootstrap.log) 2>&1
+
+retry() {
+  local n
+  for n in $(seq 1 60); do "$@" && return 0; echo "tentativa $n falhou: $*"; sleep 10; done
+  return 1
+}
+
+retry dnf install -y docker
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+# --- Login no ECR e pull das imagens espelhadas ---
+retry sh -c 'aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${registry}'
+%{ for name, image in images ~}
+retry docker pull ${image}
+%{ endfor ~}
+
+# --- Configurações ---
+mkdir -p /opt/obs/rules /opt/obs/data/{prometheus,tempo,loki,alertmanager}
+chown 65534:65534 /opt/obs/data/prometheus /opt/obs/data/alertmanager
+chown 10001:10001 /opt/obs/data/tempo /opt/obs/data/loki
+
+cat > /opt/obs/otel-collector.yaml <<'OBS_EOF'
+${collector_config}
+OBS_EOF
+
+cat > /opt/obs/prometheus.yml <<'OBS_EOF'
+${prometheus_config}
+OBS_EOF
+
+cat > /opt/obs/rules/alert-rules.yml <<'OBS_EOF'
+${alert_rules}
+OBS_EOF
+
+cat > /opt/obs/tempo.yaml <<'OBS_EOF'
+${tempo_config}
+OBS_EOF
+
+cat > /opt/obs/loki.yaml <<'OBS_EOF'
+${loki_config}
+OBS_EOF
+
+# --- Alertmanager -> Discord ---
+%{ if discord_secret_arn != "" ~}
+# A URL vem do Secrets Manager e fica num arquivo só legível pelo usuário do
+# container (nobody, 65534); não aparece no alertmanager.yml nem no user_data.
+DISCORD_URL=""
+for i in $(seq 1 30); do
+  DISCORD_URL=$(aws secretsmanager get-secret-value --region ${region} \
+    --secret-id "${discord_secret_arn}" --query SecretString --output text) && break
+  sleep 10
+done
+[ -n "$DISCORD_URL" ] || { echo "nao consegui ler o webhook do Discord"; exit 1; }
+printf '%s' "$DISCORD_URL" > /opt/obs/discord_webhook_url
+unset DISCORD_URL
+chown 65534:65534 /opt/obs/discord_webhook_url
+chmod 400 /opt/obs/discord_webhook_url
+
+cat > /opt/obs/alertmanager.yml <<'OBS_EOF'
+route:
+  receiver: discord
+  group_by: [alertname]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 30m
+receivers:
+  - name: discord
+    discord_configs:
+      - webhook_url_file: /etc/alertmanager/discord_webhook_url
+        send_resolved: true
+OBS_EOF
+DISCORD_MOUNT="-v /opt/obs/discord_webhook_url:/etc/alertmanager/discord_webhook_url:ro"
+%{ else ~}
+# Sem webhook configurado: o alerta só aparece no Alertmanager/Grafana.
+cat > /opt/obs/alertmanager.yml <<'OBS_EOF'
+route:
+  receiver: lab-default
+  group_by: [alertname]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 30m
+receivers:
+  - name: lab-default
+OBS_EOF
+DISCORD_MOUNT=""
+%{ endif ~}
+
+chmod 644 /opt/obs/*.yml /opt/obs/*.yaml /opt/obs/rules/*.yml
+
+# --- Containers ---
+docker network create obs-net || true
+LOGOPTS="--log-opt max-size=10m --log-opt max-file=3"
+
+docker run -d --name tempo --network obs-net --restart unless-stopped $LOGOPTS \
+  -p 3200:3200 \
+  -v /opt/obs/tempo.yaml:/etc/tempo.yaml:ro \
+  -v /opt/obs/data/tempo:/var/tempo \
+  ${images["tempo"]} -config.file=/etc/tempo.yaml
+
+docker run -d --name loki --network obs-net --restart unless-stopped $LOGOPTS \
+  -p 3100:3100 \
+  -v /opt/obs/loki.yaml:/etc/loki/config.yaml:ro \
+  -v /opt/obs/data/loki:/loki \
+  ${images["loki"]} -config.file=/etc/loki/config.yaml
+
+# shellcheck disable=SC2086 # DISCORD_MOUNT vazio ou "-v origem:destino:ro"
+docker run -d --name alertmanager --network obs-net --restart unless-stopped $LOGOPTS \
+  -p 9093:9093 \
+  -v /opt/obs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro \
+  -v /opt/obs/data/alertmanager:/alertmanager \
+  $DISCORD_MOUNT \
+  ${images["alertmanager"]} \
+  --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/alertmanager
+
+docker run -d --name prometheus --network obs-net --restart unless-stopped $LOGOPTS \
+  -p 9090:9090 \
+  -v /opt/obs/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+  -v /opt/obs/rules:/etc/prometheus/rules:ro \
+  -v /opt/obs/data/prometheus:/prometheus \
+  ${images["prometheus"]} \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/prometheus \
+  --storage.tsdb.retention.time=3d \
+  --web.enable-remote-write-receiver
+
+# Só a 4318 (OTLP/HTTP) é publicada; o sg obs-backend a libera apenas para o sg app.
+docker run -d --name otel-collector --network obs-net --restart unless-stopped $LOGOPTS \
+  --memory 512m \
+  -p 4318:4318 \
+  -v /opt/obs/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro \
+  ${images["otel-collector"]} --config=/etc/otelcol-contrib/config.yaml
+
+docker ps
+echo "bootstrap do backend concluido"

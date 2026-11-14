@@ -1,28 +1,35 @@
-output "instance_id" {
-  description = "Para o Session Manager (túnel do Alertmanager na 9093)."
-  value       = aws_instance.this.id
+output "backend_instance_id" {
+  description = "Session Manager na EC2 de backend (docker ps, túneis)."
+  value       = aws_instance.backend.id
 }
 
-output "private_ip" {
-  value = aws_instance.this.private_ip
+output "backend_private_ip" {
+  value = aws_instance.backend.private_ip
 }
 
 output "otlp_endpoint" {
   description = "Valor de OTEL_EXPORTER_OTLP_ENDPOINT nas tasks."
-  value       = "http://${aws_instance.this.private_ip}:4318"
+  value       = "http://${aws_instance.backend.private_ip}:4318"
 }
 
-output "public_dns" {
-  description = "Origem do CloudFront do Grafana (DNS do Elastic IP)."
-  value       = aws_eip.this.public_dns
+output "grafana_instance_id" {
+  value = aws_instance.grafana.id
 }
 
-output "security_group_id" {
-  value = aws_security_group.this.id
+output "grafana_public_ip" {
+  value = aws_eip.grafana.public_ip
 }
 
-output "grafana_secret_arn" {
-  value = aws_secretsmanager_secret.grafana.arn
+output "grafana_url" {
+  value = "http://${aws_eip.grafana.public_ip}:3000"
+}
+
+output "backend_security_group_id" {
+  value = aws_security_group.backend.id
+}
+
+output "grafana_security_group_id" {
+  value = aws_security_group.grafana.id
 }
 
 output "grafana_admin_password" {

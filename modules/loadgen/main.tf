@@ -23,7 +23,7 @@ resource "aws_ecs_task_definition" "this" {
     image     = var.image
     essential = true
 
-    environment = [
+    environment = concat([
       { name = "TARGET_URL", value = var.target_url },
       { name = "OTEL_SERVICE_NAME", value = var.name },
       { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = var.otlp_endpoint },
@@ -32,7 +32,7 @@ resource "aws_ecs_task_definition" "this" {
       { name = "OTEL_METRICS_EXPORTER", value = "otlp" },
       { name = "OTEL_LOGS_EXPORTER", value = "otlp" },
       { name = "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED", value = "true" },
-    ]
+    ], var.extra_environment)
 
     logConfiguration = {
       logDriver = "awslogs"

@@ -1,0 +1,71 @@
+#!/bin/bash
+# Bootstrap da EC2 do Grafana (subnet pública). Só o Grafana roda aqui; os data
+# sources apontam para o IP privado da EC2 de backend (${backend_host}).
+# Log em /var/log/obs-bootstrap.log.
+set -euo pipefail
+exec > >(tee /var/log/obs-bootstrap.log) 2>&1
+
+retry() {
+  local n
+  for n in $(seq 1 60); do "$@" && return 0; echo "tentativa $n falhou: $*"; sleep 10; done
+  return 1
+}
+
+retry dnf install -y docker
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+retry docker pull ${grafana_image}
+
+# --- Provisionamento: data sources, provider e dashboard de SLI ---
+mkdir -p /opt/grafana/provisioning/datasources /opt/grafana/provisioning/dashboards /opt/grafana/dashboards
+
+cat > /opt/grafana/provisioning/datasources/datasources.yaml <<'OBS_EOF'
+${datasources}
+OBS_EOF
+
+cat > /opt/grafana/provisioning/dashboards/dashboards.yaml <<'OBS_EOF'
+${dashboards_provider}
+OBS_EOF
+
+cat > /opt/grafana/dashboards/notas-sli.json <<'OBS_EOF'
+${dashboard_sli}
+OBS_EOF
+
+chmod -R a+rX /opt/grafana
+
+# --- Senha do admin: vem do Secrets Manager, nunca do user_data ---
+GFPASS=""
+for i in $(seq 1 30); do
+  GFPASS=$(aws secretsmanager get-secret-value --region ${region} \
+    --secret-id "${secret_arn}" --query SecretString --output text) && break
+  sleep 10
+done
+[ -n "$GFPASS" ] || { echo "nao consegui ler a senha do Grafana"; exit 1; }
+
+docker run -d --name grafana --restart unless-stopped \
+  --log-opt max-size=10m --log-opt max-file=3 \
+  -p 3000:3000 \
+  -e OBS_BACKEND_HOST=${backend_host} \
+  -e GF_SECURITY_ADMIN_PASSWORD="$GFPASS" \
+  -e GF_USERS_ALLOW_SIGN_UP=false \
+  -e GF_AUTH_ANONYMOUS_ENABLED=false \
+  -e GF_ANALYTICS_REPORTING_ENABLED=false \
+  -v grafana-data:/var/lib/grafana \
+  -v /opt/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro \
+  -v /opt/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro \
+  -v /opt/grafana/dashboards:/var/lib/grafana/dashboards:ro \
+  ${grafana_image}
+
+# --- Alertas gerenciados pelo Grafana vão só para o Alertmanager externo ---
+# Equivale a Alerting > Settings > "External"; não existe provisionamento por arquivo.
+for i in $(seq 1 60); do
+  curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break
+  sleep 5
+done
+curl -fsS -u "admin:$GFPASS" -X POST http://localhost:3000/api/v1/ngalert/admin_config \
+  -H 'Content-Type: application/json' \
+  -d '{"alertmanagersChoice":"external"}' \
+  || echo "AVISO: nao consegui ajustar alertmanagersChoice (faca em Alerting > Settings)"
+unset GFPASS
+echo "bootstrap do grafana concluido"

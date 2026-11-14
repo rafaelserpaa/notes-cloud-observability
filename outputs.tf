@@ -53,8 +53,8 @@ output "log_group_name" {
 
 
 output "grafana_url" {
-  description = "Grafana público (HTTPS, login obrigatório)."
-  value       = var.enable_observability ? "https://${local.grafana_fqdn}" : null
+  description = "Grafana (só abre a partir de grafana_allowed_cidrs). Login: admin."
+  value       = var.enable_observability ? module.observability[0].grafana_url : null
 }
 
 output "grafana_admin_password" {
@@ -63,13 +63,22 @@ output "grafana_admin_password" {
   sensitive   = true
 }
 
-output "obs_instance_id" {
-  description = "Para o túnel do Alertmanager via Session Manager."
-  value       = var.enable_observability ? module.observability[0].instance_id : null
+output "obs_backend_instance_id" {
+  description = "EC2 privada: aws ssm start-session --target <id>."
+  value       = var.enable_observability ? module.observability[0].backend_instance_id : null
+}
+
+output "obs_grafana_instance_id" {
+  value = var.enable_observability ? module.observability[0].grafana_instance_id : null
 }
 
 output "obs_otlp_endpoint" {
   value = var.enable_observability ? module.observability[0].otlp_endpoint : null
+}
+
+output "obs_image_mirror" {
+  description = "Origem (Docker Hub) e destino (ECR) de cada imagem do backend; lido por scripts/mirror-images.sh."
+  value       = local.obs_image_mirror
 }
 
 output "loadgen_service_name" {

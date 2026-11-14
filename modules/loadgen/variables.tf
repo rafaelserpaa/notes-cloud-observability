@@ -30,6 +30,12 @@ variable "otlp_endpoint" {
   type = string
 }
 
+variable "extra_environment" {
+  description = "Variáveis de ambiente adicionais (ex.: detectores de recurso OTel)."
+  type        = list(object({ name = string, value = string }))
+  default     = []
+}
+
 variable "cpu" {
   type    = number
   default = 256

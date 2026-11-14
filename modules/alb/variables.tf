@@ -45,3 +45,9 @@ variable "origin_fqdn" {
   description = "Ex.: origin.labdenuvemarquiteturavinicius.click"
   type        = string
 }
+
+variable "health_check_timeout" {
+  description = "Timeout do health check em segundos (menor que o intervalo de 30 s)."
+  type        = number
+  default     = 10
+}

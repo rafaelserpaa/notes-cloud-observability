@@ -190,7 +190,7 @@ variable "cloudfront_price_class" {
 # ------------------------------------------------------------------ observabilidade
 
 variable "enable_observability" {
-  description = "Liga a EC2 de observabilidade, o CloudFront do Grafana, o loadgen e a imagem OTel na aplicação."
+  description = "Liga as EC2 de observabilidade (Grafana público + backend privado), o loadgen e a imagem OTel na aplicação."
   type        = bool
   default     = true
 }
@@ -198,13 +198,13 @@ variable "enable_observability" {
 variable "otel_image_tag" {
   description = "Tag da imagem da aplicação instrumentada (target app do Dockerfile), usada quando enable_observability = true. ECR é IMMUTABLE: imagem nova = tag nova."
   type        = string
-  default     = "app-2.1.0"
+  default     = "app-2.2.0"
 }
 
 variable "loadgen_image_tag" {
   description = "Tag da imagem do gerador de carga (target loadgen do Dockerfile)."
   type        = string
-  default     = "loadgen-1.0.0"
+  default     = "loadgen-1.1.0"
 }
 
 variable "loadgen_desired_count" {
@@ -213,15 +213,45 @@ variable "loadgen_desired_count" {
   default     = 1
 }
 
-variable "obs_instance_type" {
-  type    = string
-  default = "t3.medium"
+variable "obs_backend_instance_type" {
+  description = "EC2 privada com Collector, Prometheus, Tempo, Loki e Alertmanager."
+  type        = string
+  default     = "t3.medium"
 }
 
-variable "grafana_subdomain" {
-  description = "Endereço público do Grafana (CloudFront), coberto pelo certificado curinga."
+variable "obs_grafana_instance_type" {
+  description = "EC2 pública só com o Grafana."
   type        = string
-  default     = "grafana"
+  default     = "t3.small"
+}
+
+variable "grafana_allowed_cidrs" {
+  description = "Quem alcança o Grafana na 3000: o seu IP /32 (curl -s https://checkip.amazonaws.com)."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for c in var.grafana_allowed_cidrs : can(cidrhost(c, 0)) && c != "0.0.0.0/0"])
+    error_message = "Use CIDRs válidos e restritos (ex.: 203.0.113.10/32); 0.0.0.0/0 é proibido pela apostila."
+  }
+}
+
+variable "grafana_image" {
+  description = "Imagem do Grafana (EC2 pública, puxada do Docker Hub)."
+  type        = string
+  default     = "grafana/grafana:11.5.2"
+}
+
+variable "obs_backend_images" {
+  description = "Imagens do backend (origem no Docker Hub). scripts/mirror-images.sh copia cada uma para lab-obs/<chave> no ECR com a mesma tag."
+  type        = map(string)
+  default = {
+    "otel-collector" = "otel/opentelemetry-collector-contrib:0.120.0"
+    "prometheus"     = "prom/prometheus:v3.2.1"
+    "tempo"          = "grafana/tempo:2.7.1"
+    "loki"           = "grafana/loki:3.4.2"
+    "alertmanager"   = "prom/alertmanager:v0.28.1"
+  }
 }
 
 variable "discord_webhook_url" {

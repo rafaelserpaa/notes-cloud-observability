@@ -1,0 +1,51 @@
+# OpenTelemetry Collector (contrib) da EC2 de backend.
+# Recebe OTLP/HTTP das tasks na 4318 e distribui cada sinal para o seu backend:
+#   traces  -> Tempo      (OTLP gRPC, rede docker interna)
+#   métricas-> Prometheus (remote write; o Prometheus sobe com --web.enable-remote-write-receiver)
+#   logs    -> Loki       (endpoint OTLP nativo do Loki 3)
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+    spike_limit_mib: 100
+  batch: {}
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+    # Atributos de recurso (service.instance.id, host.name...) viram rótulos:
+    # é o que separa as duas tasks nas consultas do Prometheus.
+    resource_to_telemetry_conversion:
+      enabled: true
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/loki]

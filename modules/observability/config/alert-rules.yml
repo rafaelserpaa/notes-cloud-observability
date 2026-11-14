@@ -1,0 +1,49 @@
+# SLIs e alertas da Notas da Nuvem, avaliados pelo Prometheus e entregues ao Alertmanager.
+#
+# Métrica: http.server.request.duration (semconv HTTP estável; as tasks rodam com
+# OTEL_SEMCONV_STABILITY_OPT_IN=http). No Prometheus ela vira
+# http_server_request_duration_seconds_{bucket,count,sum}, com os rótulos
+# http_response_status_code, http_request_method e http_route.
+#
+# /health fica de fora: é o health check do ALB, responde 200 mesmo com o banco
+# fora do ar e diluiria a queda do SLI.
+groups:
+  - name: notas-da-nuvem-sli
+    rules:
+      - record: sli:disponibilidade:ratio_rate5m
+        expr: |
+          sum(rate(http_server_request_duration_seconds_count{job="notas-da-nuvem", http_route!="/health", http_response_status_code!~"5.."}[5m]))
+          /
+          sum(rate(http_server_request_duration_seconds_count{job="notas-da-nuvem", http_route!="/health"}[5m]))
+
+      - record: sli:latencia_p95:seconds_rate5m
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_request_duration_seconds_bucket{job="notas-da-nuvem", http_route!="/health"}[5m])))
+
+      - alert: DisponibilidadeAbaixoDoSLO
+        expr: sli:disponibilidade:ratio_rate5m < 0.995
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Notas da Nuvem: disponibilidade abaixo de 99,5%"
+          description: "Requisições sem 5xx nos últimos 5 min: {{ $value | humanizePercentage }} (SLO 99,5%)."
+
+      - alert: LatenciaP95Alta
+        expr: sli:latencia_p95:seconds_rate5m > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notas da Nuvem: latência p95 acima de 500 ms"
+          description: "p95 dos últimos 5 min: {{ $value | humanizeDuration }}."
+
+      - alert: TelemetriaAusente
+        expr: absent(http_server_request_duration_seconds_count{job="notas-da-nuvem"})
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notas da Nuvem: nenhuma métrica chegando há 10 min"
+          description: "Verifique as tasks, a regra 4318 do sg obs-backend e o container otel-collector."

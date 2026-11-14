@@ -7,8 +7,8 @@
 # Variáveis opcionais: APP_TAG, LOADGEN_TAG, BASE_IMAGE, AWS_REGION.
 set -euo pipefail
 
-APP_TAG="${APP_TAG:-app-2.1.0}"                 # mesmo valor de var.otel_image_tag
-LOADGEN_TAG="${LOADGEN_TAG:-loadgen-1.0.0}"     # mesmo valor de var.loadgen_image_tag
+APP_TAG="${APP_TAG:-app-2.2.0}"                 # mesmo valor de var.otel_image_tag
+LOADGEN_TAG="${LOADGEN_TAG:-loadgen-1.1.0}"     # mesmo valor de var.loadgen_image_tag
 BASE_IMAGE="${BASE_IMAGE:-rafaelserpa/notas-da-nuvem:1.0.0}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 

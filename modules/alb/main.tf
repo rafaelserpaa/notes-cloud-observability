@@ -20,6 +20,10 @@ resource "aws_lb_target_group" "this" {
     protocol = "HTTP"
     port     = "traffic-port"
     matcher  = "200"
+    # /health abre conexão com o banco (connect_timeout=5 s na app). Com o banco
+    # inalcançável (Passo 9) a resposta leva ~5 s; com o timeout padrão de 5 s o ALB
+    # derrubaria as tasks e o teste de falha mostraria outra coisa.
+    timeout = var.health_check_timeout
   }
 }
 
