@@ -1,12 +1,3 @@
-# SLIs e alertas da Notas da Nuvem, avaliados pelo Prometheus e entregues ao Alertmanager.
-#
-# Métrica: http.server.request.duration (semconv HTTP estável; as tasks rodam com
-# OTEL_SEMCONV_STABILITY_OPT_IN=http). No Prometheus ela vira
-# http_server_request_duration_seconds_{bucket,count,sum}, com os rótulos
-# http_response_status_code, http_request_method e http_route.
-#
-# /health fica de fora: é o health check do ALB, responde 200 mesmo com o banco
-# fora do ar e diluiria a queda do SLI.
 groups:
   - name: notas-da-nuvem-sli
     rules:

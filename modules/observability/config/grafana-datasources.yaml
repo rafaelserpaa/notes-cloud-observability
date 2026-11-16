@@ -1,6 +1,3 @@
-# Data sources do Grafana, todos apontando para o IP privado da EC2 de backend.
-# ${OBS_BACKEND_HOST} é expandido pelo Grafana a partir da variável de ambiente do
-# container; $${...} é o escape para um ${...} literal.
 apiVersion: 1
 
 datasources:
@@ -38,7 +35,6 @@ datasources:
     editable: false
     jsonData:
       derivedFields:
-        # trace_id chega como structured metadata (logs OTLP); vira link para o Tempo.
         - name: TraceID
           matcherType: label
           matcherRegex: trace_id
@@ -53,6 +49,4 @@ datasources:
     editable: false
     jsonData:
       implementation: prometheus
-      # "Receive Grafana Alerts": regras criadas no próprio Grafana também vão
-      # para este Alertmanager (e dele para o Discord).
       handleGrafanaManagedAlerts: true

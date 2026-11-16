@@ -1,4 +1,3 @@
-# Loki monolítico, filesystem, recebe logs OTLP do Collector em /otlp/v1/logs.
 auth_enabled: false
 
 server:

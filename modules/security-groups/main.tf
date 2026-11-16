@@ -1,4 +1,3 @@
-
 data "aws_ec2_managed_prefix_list" "cloudfront" {
   name = "com.amazonaws.global.cloudfront.origin-facing"
 }
@@ -55,7 +54,6 @@ moved {
   to   = aws_vpc_security_group_ingress_rule.db_from_app[0]
 }
 
-# Passo 9 (falha provocada): db_ingress_enabled = false remove esta regra.
 resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
   count = var.db_ingress_enabled ? 1 : 0
 

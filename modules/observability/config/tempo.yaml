@@ -1,4 +1,3 @@
-# Tempo monolítico com armazenamento local (lab: retenção de 24 h).
 stream_over_http_enabled: true
 
 server:
@@ -9,7 +8,6 @@ distributor:
     otlp:
       protocols:
         grpc:
-          # A partir do 2.7 o padrão é localhost; o Collector chega por outro container.
           endpoint: 0.0.0.0:4317
 
 ingester:

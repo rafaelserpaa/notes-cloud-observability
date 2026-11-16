@@ -1,4 +1,3 @@
-
 locals {
   az_letters = [for az in var.azs : upper(substr(az, -1, 1))]
 }

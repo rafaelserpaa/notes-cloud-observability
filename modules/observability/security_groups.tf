@@ -1,7 +1,3 @@
-# sg obs-grafana: 3000 só a partir de var.grafana_allowed_cidrs (seu IP /32);
-#                3128 (squid) só do sg obs-backend.
-# sg obs-backend: 4318 só do sg app; 9090/3200/3100/9093 só do sg obs-grafana.
-
 resource "aws_security_group" "grafana" {
   name        = var.grafana_security_group_name
   description = "EC2 do Grafana - 3000 somente do IP autorizado"
@@ -81,8 +77,6 @@ resource "aws_vpc_security_group_egress_rule" "backend_all" {
 }
 
 
-# Os VPC Endpoints de interface têm DNS privado: Secrets Manager, ECR e SSM resolvem
-# para eles a partir das duas EC2. Sem estas regras o sg endpoint descarta a conexão.
 resource "aws_vpc_security_group_ingress_rule" "endpoint_from_obs" {
   for_each = {
     backend = aws_security_group.backend.id

@@ -19,20 +19,11 @@ locals {
     { name = "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED", value = "true" },
   ] : []
 
-  # Além das 7 da apostila:
-  #  - detectores host + service_instance: cada task ganha host.name (hostname da task,
-  #    ip-10-0-1x-y...) e um service.instance.id próprio. É isso que separa as duas
-  #    tasks no Tempo (atributos de recurso) e no Prometheus (rótulos host_name e
-  #    service_instance_id, via resource_to_telemetry_conversion no Collector).
-  #  - semconv HTTP estável: nome de métrica fixo (http_server_request_duration_seconds,
-  #    rótulo http_response_status_code), usado pelas regras de alerta e pelo dashboard.
   otel_identity_environment = var.enable_observability ? [
     { name = "OTEL_EXPERIMENTAL_RESOURCE_DETECTORS", value = "host,service_instance" },
     { name = "OTEL_SEMCONV_STABILITY_OPT_IN", value = "http" },
   ] : []
 
-  # Imagens do backend de observabilidade: espelhadas do Docker Hub no ECR
-  # (scripts/mirror-images.sh), porque a EC2 privada não tem NAT.
   obs_image_mirror = var.enable_observability ? {
     for name, source in var.obs_backend_images : name => {
       source = source
@@ -72,7 +63,6 @@ module "security_groups" {
 module "vpc_endpoints" {
   source = "./modules/vpc-endpoints"
 
-  # ssm/ssmmessages/ec2messages: Session Manager na EC2 de backend, que não tem NAT.
   interface_services = concat(
     ["ecr.api", "ecr.dkr", "secretsmanager", "logs"],
     var.enable_observability ? ["ssm", "ssmmessages", "ec2messages"] : [],

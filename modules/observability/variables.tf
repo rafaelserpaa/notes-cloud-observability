@@ -35,8 +35,6 @@ variable "discord_secret_name" {
   default     = "lab-obs/discord-webhook-url"
 }
 
-# ------------------------------------------------------------------ backend (subnet privada)
-
 variable "backend_name" {
   type    = string
   default = "lab-obs-backend"
@@ -79,8 +77,6 @@ variable "backend_images" {
   description = "URI completa (ECR) de cada imagem do backend: otel-collector, prometheus, tempo, loki, alertmanager."
   type        = map(string)
 }
-
-# ------------------------------------------------------------------ grafana (subnet pública)
 
 variable "grafana_name" {
   type    = string

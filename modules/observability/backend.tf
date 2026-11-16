@@ -7,7 +7,6 @@ resource "aws_instance" "backend" {
   iam_instance_profile        = aws_iam_instance_profile.this.name
   associate_public_ip_address = false
 
-  # gzip: as configs embutidas passam do limite de 16 KB do user_data em texto.
   user_data_base64 = base64gzip(templatefile("${path.module}/templates/backend_user_data.sh.tftpl", {
     region             = var.region
     registry           = split("/", values(var.backend_images)[0])[0]

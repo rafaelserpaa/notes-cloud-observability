@@ -1,5 +1,3 @@
-# Prometheus da EC2 de backend. As métricas da aplicação chegam por remote write
-# (Collector -> /api/v1/write); os scrapes abaixo são só da própria stack.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s

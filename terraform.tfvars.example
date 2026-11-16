@@ -1,13 +1,8 @@
-# Copie para terraform.tfvars e ajuste. Os demais valores já têm como padrão
-# o que está na documentação da entrega.
-
 account_id    = "092304627167"
 budget_emails = ["seu-email@exemplo.com"]
 
-# Quem acessa o Grafana (porta 3000): o seu IP /32 (curl -s https://checkip.amazonaws.com).
 grafana_allowed_cidrs = ["203.0.113.10/32"]
 
-# Alertas do Alertmanager no Discord (Canal > Integrações > Webhooks > Copiar URL).
 # discord_webhook_url = "https://discord.com/api/webhooks/<id>/<token>"
 
 # image_tag = "v1-1.0.0"

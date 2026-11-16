@@ -1,4 +1,2 @@
-# O build só precisa do loadgen/; o resto (principalmente .terraform/, com os
-# binários dos providers) só deixaria o contexto enorme.
 *
 !loadgen/loadgen.py

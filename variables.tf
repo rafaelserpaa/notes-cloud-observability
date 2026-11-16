@@ -187,8 +187,6 @@ variable "cloudfront_price_class" {
   default = "PriceClass_All"
 }
 
-# ------------------------------------------------------------------ observabilidade
-
 variable "enable_observability" {
   description = "Liga as EC2 de observabilidade (Grafana público + backend privado), o loadgen e a imagem OTel na aplicação."
   type        = bool

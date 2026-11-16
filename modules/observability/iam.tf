@@ -1,7 +1,3 @@
-# Uma role por instância (menor privilégio):
-#   backend (lab-obs-ec2):     SSM + pull do ECR + webhook do Discord
-#   grafana (lab-obs-grafana): SSM + senha do admin do Grafana
-
 data "aws_iam_policy_document" "ec2_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -11,8 +7,6 @@ data "aws_iam_policy_document" "ec2_assume" {
     }
   }
 }
-
-# ------------------------------------------------------------------ backend
 
 resource "aws_iam_role" "this" {
   name               = var.role_name
@@ -49,8 +43,6 @@ resource "aws_iam_instance_profile" "this" {
   name = var.role_name
   role = aws_iam_role.this.name
 }
-
-# ------------------------------------------------------------------ grafana
 
 resource "aws_iam_role" "grafana" {
   name               = var.grafana_role_name

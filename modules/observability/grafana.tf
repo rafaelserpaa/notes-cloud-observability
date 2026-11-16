@@ -48,7 +48,6 @@ resource "aws_instance" "grafana" {
   ]
 }
 
-# IP fixo: o endereço do Grafana não muda se a instância for recriada.
 resource "aws_eip" "grafana" {
   domain   = "vpc"
   instance = aws_instance.grafana.id
