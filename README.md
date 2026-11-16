@@ -10,7 +10,6 @@ e Grafana) em duas EC2.
 | Documento | Para quê |
 |---|---|
 | [GUIA.md](GUIA.md) | Passo a passo do lab: subir, tirar os 13 prints na ordem, simular a falha, destruir |
-| [ALTERACOES.md](ALTERACOES.md) | Histórico das mudanças, decisões, testes e custos (contexto para retomar o trabalho) |
 
 ## Estrutura
 
@@ -291,8 +290,7 @@ não brigar com a `ecsTaskExecutionRole` da conta.
 
 Com tudo ligado o ambiente custa **~US$ 0,35–0,53/h** (US$ 8–13/dia). Os itens que cobram por
 hora mesmo parados: os 7 endpoints de interface (× 2 AZs, ~US$ 0,14/h), o ALB, as duas EC2 e o
-Aurora quando não está pausado (com o loadgen ligado ele nunca pausa). Detalhes em
-[ALTERACOES.md](ALTERACOES.md#custos). Ao fim do lab:
+Aurora quando não está pausado (com o loadgen ligado ele nunca pausa). Ao fim do lab:
 
 ```bash
 # o repositório da aplicação tem force_delete = false: esvazie antes
