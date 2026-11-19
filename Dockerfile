@@ -19,6 +19,8 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt \
  && opentelemetry-bootstrap -a install \
  && pip check \
  && rm -f /tmp/requirements.txt
+# Código da aplicação versionado neste repositório (Passos 5, 7 e 9 da apostila).
+COPY --chmod=644 app.py /app/app.py
 USER appuser
 
 # Fitness function de observabilidade (buildspecs/observabilidade.yml): roda o

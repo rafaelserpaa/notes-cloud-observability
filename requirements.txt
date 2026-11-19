@@ -5,7 +5,7 @@
 
 # A base traz Flask 3.0.3, com vulnerabilidade conhecida (PYSEC-2026-2151)
 # corrigida na 3.1.3. É o achado do pip-audit da apostila (Seção 5).
-flask==3.0.3
+flask==3.1.3
 
 # Gerador de carga (target loadgen).
 requests==2.34.2
