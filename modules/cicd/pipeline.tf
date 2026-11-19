@@ -31,8 +31,8 @@ resource "aws_codepipeline" "this" {
         branches {
           includes = [var.branch]
         }
+        # Só exclusões: qualquer outro arquivo dispara.
         file_paths {
-          includes = ["**"]
           excludes = var.trigger_excluded_paths
         }
       }
