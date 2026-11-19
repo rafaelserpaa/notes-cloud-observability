@@ -23,9 +23,6 @@ from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 app = Flask(__name__)
 
-# ---------------------------------------------------------------------------
-# Configuração via variáveis de ambiente (nunca hardcode credenciais aqui)
-# ---------------------------------------------------------------------------
 DB_HOST = os.environ.get("DB_HOST", "localhost")
 DB_PORT = os.environ.get("DB_PORT", "5432")
 DB_NAME = os.environ.get("DB_NAME", "notasdb")
@@ -138,9 +135,6 @@ def criar_nota():
     return redirect(url_for("index"))
 
 
-# Executado tanto em desenvolvimento (`python3 app.py`) quanto em produção
-# (gunicorn importa este módulo e usa o objeto `app` — o bloco abaixo roda
-# nos dois casos, porque fica no nível do módulo, não dentro do "__main__").
 wait_for_db()
 try:
     ensure_schema()

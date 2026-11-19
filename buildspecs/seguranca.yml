@@ -1,16 +1,8 @@
-# Fitness functions de segurança (apostila, Seção 5 / SEC11-BP02):
-#   gitleaks  -> segredos em TODO o histórico do Git    (falha com qualquer segredo)
-#   pip-audit -> dependências Python vulneráveis (SCA)  (falha com vulnerabilidade conhecida)
-#   Bandit    -> padrões inseguros no código (SAST)     (falha com severidade média ou alta)
-#
-# Projeto: notas-seguranca (não privilegiado). Origem: Full clone (CODEBUILD_CLONE_REF).
 version: 0.2
 
 env:
   shell: bash
   variables:
-    # Versões fixas + SHA-256 oficial: tudo o que o buildspec baixa roda com a
-    # role do projeto (o caso tj-actions/changed-files da Seção 9).
     GITLEAKS_VERSION: "8.30.1"
     GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
 
@@ -26,24 +18,30 @@ phases:
         echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
         tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
         gitleaks version
-      # pip-audit e Bandit com versões e hashes fixos (ci/requirements-tools.txt).
       - python -m venv /opt/tools
       - /opt/tools/bin/pip install --quiet --disable-pip-version-check --require-hashes -r ci/requirements-tools.txt
       - /opt/tools/bin/pip-audit --version && /opt/tools/bin/bandit --version | head -1
 
   build:
     commands:
-      # O gitleaks precisa do histórico completo do Git (opção "Full clone" na origem do pipeline).
       - git config --global --add safe.directory "$CODEBUILD_SRC_DIR"
       - git fetch --unshallow --quiet || true
       - echo "Commits no histórico analisado:" "$(git rev-list --count HEAD)"
-      - gitleaks git . --redact --verbose
+      - |
+        REPROVADOS=""
 
-      # pip-audit: o que este repositório instala por cima da imagem base. O
-      # ambiente completo da imagem é auditado de novo no buildspecs/imagem.yml.
-      - /opt/tools/bin/pip-audit -r requirements.txt -r requirements-dev.txt --strict --desc on --progress-spinner off
+        echo "==================== gitleaks: segredos em todo o histórico"
+        gitleaks git . --redact --verbose || REPROVADOS="$REPROVADOS gitleaks"
 
-      # Bandit: todo o Python do repositório, fora de tests/ (asserts são esperados lá),
-      # só severidade média ou alta (-ll). O app.py da aplicação vem pronto na imagem
-      # base e é analisado no buildspecs/imagem.yml.
-      - /opt/tools/bin/bandit -r . -x ./tests,./.terraform,./build -ll
+        echo "==================== pip-audit: dependências (SCA)"
+        /opt/tools/bin/pip-audit -r requirements.txt -r requirements-dev.txt --strict --desc on --progress-spinner off \
+          || REPROVADOS="$REPROVADOS pip-audit"
+
+        echo "==================== Bandit: código (SAST)"
+        /opt/tools/bin/bandit -r . -x ./tests,./.terraform,./build -ll || REPROVADOS="$REPROVADOS bandit"
+
+        if [ -n "$REPROVADOS" ]; then
+          echo "PORTÕES REPROVADOS:$REPROVADOS"
+          exit 1
+        fi
+        echo "Todos os portões de segurança aprovados."

@@ -10,12 +10,15 @@ e Grafana) em duas EC2.
 | Documento | Para quê |
 |---|---|
 | [GUIA.md](GUIA.md) | Passo a passo do lab: subir, tirar os 13 prints na ordem, simular a falha, destruir |
+| [Evidencias_Observabilidade_SRE.pdf](Evidencias_Observabilidade_SRE.pdf) | Evidências do lab de observabilidade (Aula 13) |
+| [Evidencias_notas-pipeline.pdf](Evidencias_notas-pipeline.pdf) | Evidências do pipeline de CI/CD (Aula 14) |
 | [CICD.md](CICD.md) | Pipeline de CI/CD (Aula 14): CodePipeline + CodeBuild com gitleaks, pip-audit, Bandit, Trivy, tflint e a fitness function de observabilidade; bootstrap, evidências e exceções |
 
 ## Estrutura
 
 ```
 .
+├── docs/                     # README, GUIA, CICD e os PDFs de evidências
 ├── versions.tf               # Terraform >= 1.10, provider AWS ~> 6.0, backend S3 (parcial: backend.hcl)
 ├── providers.tf              # região, trava de conta, default_tags
 ├── variables.tf              # padrões = valores da documentação
@@ -191,7 +194,7 @@ O bootstrap leva alguns minutos depois que a instância fica *running*. Log em
 
 - **Data sources:** Prometheus, Tempo (com link para logs), Loki (com link `trace_id` → Tempo) e
   Alertmanager (*Receive Grafana Alerts*). Alerting > Settings vai para *External*.
-- **Regras no Prometheus** ([alert-rules.yml](modules/observability/config/alert-rules.yml)):
+- **Regras no Prometheus** ([alert-rules.yml](../modules/observability/config/alert-rules.yml)):
   - `sli:disponibilidade:ratio_rate5m` e `sli:latencia_p95:seconds_rate5m` (recording rules);
   - `DisponibilidadeAbaixoDoSLO` (< 99,5% por 1 min), `LatenciaP95Alta` (> 500 ms por 2 min) e
     `TelemetriaAusente`.

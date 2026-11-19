@@ -8,7 +8,6 @@ resource "aws_acm_certificate" "this" {
   }
 }
 
-
 resource "aws_route53_record" "validation" {
   for_each = {
     for dvo in aws_acm_certificate.this.domain_validation_options : dvo.domain_name => {

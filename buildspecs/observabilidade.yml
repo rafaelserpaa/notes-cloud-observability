@@ -1,12 +1,3 @@
-# Fitness function de observabilidade (apostila, Seção 4):
-#   POST /notas precisa gerar o span HTTP e o span do INSERT no MESMO trace,
-#   e o texto da nota não pode vazar para a telemetria.
-#
-# O teste roda no target `test` do Dockerfile, ou seja, contra o app.py e as
-# bibliotecas OpenTelemetry que vão para produção, com um PostgreSQL descartável
-# em outro container. Sem Collector, sem Grafana.
-#
-# Projeto: notas-observabilidade (Privileged ligado: sobe containers).
 version: 0.2
 
 env:
@@ -19,7 +10,6 @@ env:
 phases:
   pre_build:
     commands:
-      # Docker Hub (imagem base): login opcional para fugir do limite de pulls anônimos.
       - |
         if [ -n "${DOCKERHUB_SECRET_ID:-}" ] && CRED=$(aws secretsmanager get-secret-value --secret-id "$DOCKERHUB_SECRET_ID" --query SecretString --output text 2>/dev/null); then
           jq -r .token <<<"$CRED" | docker login --username "$(jq -r .username <<<"$CRED")" --password-stdin
@@ -27,7 +17,6 @@ phases:
         else
           echo "Sem credencial do Docker Hub: pulls anônimos (sujeitos a limite)."
         fi
-      # Banco descartável: a senha nasce aleatória a cada build e morre com ele.
       - export DB_PASSWORD="$(openssl rand -hex 16)"
       - docker network create fitness
       - >-
@@ -56,8 +45,6 @@ phases:
     commands:
       - docker rm -f fitness-db >/dev/null 2>&1 || true
 
-# Histórico das execuções em CodeBuild > Report groups > notas-observabilidade-fitness
-# (Evidência 7: a execução que falhou e a que passou depois do revert).
 reports:
   fitness:
     base-directory: reports

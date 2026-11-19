@@ -68,7 +68,6 @@ resource "aws_sns_topic_subscription" "email" {
   endpoint  = each.value
 }
 
-# O pedido de aprovação sai pela própria ação (NotificationArn); aqui só o desfecho.
 resource "aws_codestarnotifications_notification_rule" "pipeline" {
   name        = "${var.name}-pipeline-desfecho"
   resource    = aws_codepipeline.this.arn

@@ -1,5 +1,4 @@
 locals {
-  # Todo build recebe o commit da origem: a tag da imagem é o início do SHA.
   commit_env = jsonencode([{
     name  = "COMMIT_ID"
     value = "#{SourceVariables.CommitId}"
@@ -47,16 +46,14 @@ resource "aws_codepipeline" "this" {
       output_artifacts = ["SourceArtifact"]
 
       configuration = {
-        ConnectionArn    = local.connection_arn
-        FullRepositoryId = var.github_repository
-        BranchName       = var.branch
-        # Full clone: o gitleaks precisa do histórico inteiro.
+        ConnectionArn        = local.connection_arn
+        FullRepositoryId     = var.github_repository
+        BranchName           = var.branch
         OutputArtifactFormat = "CODEBUILD_CLONE_REF"
       }
     }
   }
 
-  # Portões baratos primeiro (shift left), em paralelo.
   stage {
     name = "Validacao"
 
@@ -121,7 +118,6 @@ resource "aws_codepipeline" "this" {
     }
   }
 
-  # Com aprovação: entrega contínua. Sem: implantação contínua (Seção 8).
   dynamic "stage" {
     for_each = var.require_manual_approval ? [1] : []
     content {

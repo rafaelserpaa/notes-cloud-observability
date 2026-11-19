@@ -1,18 +1,4 @@
 #!/usr/bin/env bash
-# Copia as imagens do backend de observabilidade (Docker Hub) para os
-# repositórios lab-obs/* no ECR. A EC2 de backend fica numa subnet privada sem
-# NAT e só consegue puxar imagens do ECR (pelos VPC Endpoints).
-#
-#   terraform apply -target=module.obs_image_repos
-#   scripts/mirror-images.sh
-#
-# Só a variante linux/amd64 é enviada, como imagem de plataforma única (a EC2 é
-# x86_64). Não use "docker buildx imagetools create" aqui: ele envia cada manifesto
-# de plataforma com a própria tag, e num repositório IMMUTABLE o primeiro (ex.:
-# ppc64le) fica preso na tag e o resto falha com 400.
-#
-# Tags que já existem são puladas se forem linux/amd64; se forem de outra
-# arquitetura (sobra de uma tentativa anterior), o script para e mostra como apagar.
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-east-1}"

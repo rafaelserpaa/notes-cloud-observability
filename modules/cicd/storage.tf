@@ -1,5 +1,3 @@
-# Chave do pipeline: artefatos (o plano salvo carrega valores sensíveis), estado
-# do Terraform, segredos, logs do CodeBuild e tópico de notificações.
 data "aws_iam_policy_document" "kms" {
   statement {
     sid       = "AdministracaoPelaConta"
@@ -60,18 +58,15 @@ resource "aws_kms_alias" "this" {
   target_key_id = aws_kms_key.this.key_id
 }
 
-# --------------------------------------------------------------------------
-# Buckets: estado da stack principal e artefatos do CodePipeline
-# --------------------------------------------------------------------------
 locals {
   buckets = {
     state = {
       name          = "${var.name}-tfstate-${local.account}-${local.region}"
-      force_destroy = var.state_bucket_force_destroy # false: o estado não some num destroy por engano
+      force_destroy = var.state_bucket_force_destroy
     }
     artifacts = {
       name          = "${var.name}-pipeline-artifacts-${local.account}-${local.region}"
-      force_destroy = true # artefatos são descartáveis
+      force_destroy = true
     }
   }
 }
@@ -191,10 +186,6 @@ resource "aws_s3_bucket_policy" "this" {
   depends_on = [aws_s3_bucket_public_access_block.this]
 }
 
-# --------------------------------------------------------------------------
-# Conexão com o GitHub: a informada em existing_connection_arn ou uma nova
-# (nasce PENDING: autorize no console, Passo 3 da apostila)
-# --------------------------------------------------------------------------
 resource "aws_codeconnections_connection" "github" {
   count = var.existing_connection_arn == null ? 1 : 0
 
@@ -211,9 +202,6 @@ data "aws_codestarconnections_connection" "github" {
   arn = local.connection_arn
 }
 
-# --------------------------------------------------------------------------
-# Segredos (o valor é gravado fora do Terraform, para não ir para o estado)
-# --------------------------------------------------------------------------
 resource "aws_secretsmanager_secret" "tfvars" {
   name                    = "${var.name}/terraform-tfvars"
   description             = "Conteúdo do terraform.tfvars da stack principal, lido pelos projetos plan e deploy"

@@ -1,13 +1,3 @@
-# Menor privilégio (SEC11-BP07): uma role por tipo de trabalho, nenhuma access key.
-#
-#   checks  -> seguranca, iac, observabilidade: só logs, relatórios, artefatos e a conexão
-#   imagem  -> + push SOMENTE no repositório ECR da aplicação
-#   plan    -> + leitura da conta (sem escrita) e do estado
-#   deploy  -> + escrita nos serviços da stack principal; IAM só com prefixo e boundary
-#
-# Todas confiam no CodeBuild apenas para os projetos delas (aws:SourceArn), o que
-# evita o "confused deputy".
-
 data "aws_iam_policy_document" "codebuild_assume" {
   for_each = local.roles
 
@@ -38,9 +28,6 @@ resource "aws_iam_role" "codebuild" {
   assume_role_policy = data.aws_iam_policy_document.codebuild_assume[each.key].json
 }
 
-# --------------------------------------------------------------------------
-# Base de todas as roles do CodeBuild
-# --------------------------------------------------------------------------
 data "aws_iam_policy_document" "codebuild_base" {
   for_each = local.roles
 
@@ -55,9 +42,6 @@ data "aws_iam_policy_document" "codebuild_base" {
     ])
   }
 
-  # Com o grupo referenciado pelo nome no buildspec, o CodeBuild chama
-  # CreateReportGroup mesmo quando o grupo já existe; o escopo fica nos grupos
-  # do próprio projeto.
   statement {
     sid = "RelatoriosDeTeste"
     actions = [
@@ -96,7 +80,6 @@ data "aws_iam_policy_document" "codebuild_base" {
     resources = [aws_kms_key.this.arn]
   }
 
-  # Clone completo (Full clone) pela conexão, sem token pessoal.
   statement {
     sid       = "CloneCompletoPelaConexao"
     actions   = ["codeconnections:UseConnection", "codestar-connections:UseConnection"]
@@ -112,7 +95,6 @@ resource "aws_iam_role_policy" "codebuild_base" {
   policy = data.aws_iam_policy_document.codebuild_base[each.key].json
 }
 
-# Credencial opcional do Docker Hub (pull da imagem base sem limite anônimo).
 resource "aws_iam_role_policy" "dockerhub" {
   for_each = toset(["checks", "imagem", "deploy"])
 
@@ -129,9 +111,6 @@ resource "aws_iam_role_policy" "dockerhub" {
   })
 }
 
-# --------------------------------------------------------------------------
-# imagem: push somente no repositório da aplicação (trecho da apostila, Seção 7)
-# --------------------------------------------------------------------------
 resource "aws_iam_role_policy" "imagem" {
   name = "push-so-no-repositorio-do-lab"
   role = aws_iam_role.codebuild["imagem"].id
@@ -163,9 +142,6 @@ resource "aws_iam_role_policy" "imagem" {
   })
 }
 
-# --------------------------------------------------------------------------
-# plan e deploy: estado e tfvars
-# --------------------------------------------------------------------------
 data "aws_iam_policy_document" "terraform_state" {
   for_each = toset(["plan", "deploy"])
 
@@ -181,7 +157,6 @@ data "aws_iam_policy_document" "terraform_state" {
     resources = ["${aws_s3_bucket.this["state"].arn}/${var.state_key}"]
   }
 
-  # Lock nativo do S3 (use_lockfile): o plan também trava o estado.
   statement {
     sid       = "LockDoEstado"
     actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
@@ -212,7 +187,6 @@ resource "aws_iam_role_policy" "terraform_state" {
   policy = data.aws_iam_policy_document.terraform_state[each.key].json
 }
 
-# Leitura do que a stack principal gerencia (refresh do plan). Sem escrita.
 data "aws_iam_policy_document" "workload_read" {
   statement {
     sid = "LeituraDosServicosDaStack"
@@ -259,7 +233,6 @@ data "aws_iam_policy_document" "workload_read" {
     resources = ["arn:${local.partition}:ssm:${local.region}::parameter/aws/service/*"]
   }
 
-  # O refresh de aws_secretsmanager_secret_version lê o valor.
   statement {
     sid       = "ValoresDosSegredosDaStack"
     actions   = ["secretsmanager:GetSecretValue"]
@@ -291,17 +264,12 @@ resource "aws_iam_role_policy_attachment" "workload_read" {
   policy_arn = aws_iam_policy.workload_read.arn
 }
 
-# --------------------------------------------------------------------------
-# deploy: escrita nos serviços da stack principal, só em us-east-1
-# --------------------------------------------------------------------------
 locals {
   workload_role_arn    = "arn:${local.partition}:iam::${local.account}:role/${var.workload_name_prefix}*"
   workload_profile_arn = "arn:${local.partition}:iam::${local.account}:instance-profile/${var.workload_name_prefix}*"
 }
 
 data "aws_iam_policy_document" "workload_write" {
-  # Serviços inteiros da stack. Recursos do pipeline (CodeBuild, CodePipeline,
-  # S3, KMS, roles notas-*) ficam fora desta lista.
   statement {
     sid = "ServicosDaStack"
     actions = [
@@ -365,7 +333,6 @@ data "aws_iam_policy_document" "workload_write" {
     resources = ["*"]
   }
 
-  # Aurora (senha gerenciada) e Secrets Manager usam chaves gerenciadas pela AWS.
   statement {
     sid       = "ChavesGerenciadasViaServico"
     actions   = ["kms:CreateGrant", "kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
@@ -380,9 +347,6 @@ data "aws_iam_policy_document" "workload_write" {
     }
   }
 
-  # IAM: só roles/instance profiles com o prefixo da stack e SEMPRE com o
-  # permission boundary. Mesmo que alguém altere o Terraform para criar uma
-  # role "lab-admin", ela nunca terá mais do que o boundary permite.
   statement {
     sid = "RolesDaStackComBoundary"
     actions = [
@@ -472,10 +436,6 @@ resource "aws_iam_role_policy_attachment" "workload_write" {
   policy_arn = aws_iam_policy.workload_write.arn
 }
 
-# --------------------------------------------------------------------------
-# Permission boundary das roles que a stack principal cria (execution role do
-# ECS e as duas roles das EC2 de observabilidade): o máximo que elas podem ter.
-# --------------------------------------------------------------------------
 data "aws_iam_policy_document" "workload_boundary" {
   statement {
     sid = "PullDeImagensEcr"
@@ -516,7 +476,6 @@ data "aws_iam_policy_document" "workload_boundary" {
     }
   }
 
-  # Ações de AmazonSSMManagedInstanceCore (Session Manager nas EC2).
   statement {
     sid = "SessionManager"
     actions = [
@@ -556,9 +515,6 @@ resource "aws_iam_policy" "workload_boundary" {
   policy      = data.aws_iam_policy_document.workload_boundary.json
 }
 
-# --------------------------------------------------------------------------
-# CodePipeline: escrita à mão (a role gerada pelo console é bem mais ampla)
-# --------------------------------------------------------------------------
 data "aws_iam_policy_document" "codepipeline_assume" {
   statement {
     actions = ["sts:AssumeRole"]
