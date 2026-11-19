@@ -31,10 +31,6 @@ resource "aws_codepipeline" "this" {
         branches {
           includes = [var.branch]
         }
-        # Só exclusões: qualquer outro arquivo dispara.
-        file_paths {
-          excludes = var.trigger_excluded_paths
-        }
       }
     }
   }
@@ -51,7 +47,7 @@ resource "aws_codepipeline" "this" {
       output_artifacts = ["SourceArtifact"]
 
       configuration = {
-        ConnectionArn    = aws_codeconnections_connection.github.arn
+        ConnectionArn    = local.connection_arn
         FullRepositoryId = var.github_repository
         BranchName       = var.branch
         # Full clone: o gitleaks precisa do histórico inteiro.

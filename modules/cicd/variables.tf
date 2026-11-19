@@ -15,10 +15,10 @@ variable "branch" {
   default     = "main"
 }
 
-variable "trigger_excluded_paths" {
-  description = "Arquivos que não disparam o pipeline sozinhos (documentação). O gitleaks lê o histórico inteiro na próxima execução de qualquer forma."
-  type        = list(string)
-  default     = ["*.md", "**/*.md", "*.pdf", "**/*.pdf"]
+variable "existing_connection_arn" {
+  description = "ARN de uma conexão do GitHub já criada e autorizada no console (CodeConnections). null = o módulo cria a conexão <name>-github."
+  type        = string
+  default     = null
 }
 
 variable "require_manual_approval" {

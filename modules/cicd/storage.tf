@@ -192,11 +192,23 @@ resource "aws_s3_bucket_policy" "this" {
 }
 
 # --------------------------------------------------------------------------
-# Conexão com o GitHub (nasce PENDING: autorize no console, Passo 3 da apostila)
+# Conexão com o GitHub: a informada em existing_connection_arn ou uma nova
+# (nasce PENDING: autorize no console, Passo 3 da apostila)
 # --------------------------------------------------------------------------
 resource "aws_codeconnections_connection" "github" {
+  count = var.existing_connection_arn == null ? 1 : 0
+
   name          = "${var.name}-github"
   provider_type = "GitHub"
+}
+
+moved {
+  from = aws_codeconnections_connection.github
+  to   = aws_codeconnections_connection.github[0]
+}
+
+data "aws_codestarconnections_connection" "github" {
+  arn = local.connection_arn
 }
 
 # --------------------------------------------------------------------------

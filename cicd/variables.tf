@@ -20,6 +20,12 @@ variable "github_repository" {
   type        = string
 }
 
+variable "existing_connection_arn" {
+  description = "ARN de uma conexão do GitHub já autorizada no console. null = cria a conexão notas-github."
+  type        = string
+  default     = null
+}
+
 variable "branch" {
   type    = string
   default = "main"

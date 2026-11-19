@@ -100,7 +100,7 @@ data "aws_iam_policy_document" "codebuild_base" {
   statement {
     sid       = "CloneCompletoPelaConexao"
     actions   = ["codeconnections:UseConnection", "codestar-connections:UseConnection"]
-    resources = [aws_codeconnections_connection.github.arn]
+    resources = [local.connection_arn]
   }
 }
 
@@ -607,7 +607,7 @@ data "aws_iam_policy_document" "codepipeline" {
   statement {
     sid       = "OrigemGitHub"
     actions   = ["codeconnections:UseConnection", "codestar-connections:UseConnection"]
-    resources = [aws_codeconnections_connection.github.arn]
+    resources = [local.connection_arn]
   }
 
   statement {
