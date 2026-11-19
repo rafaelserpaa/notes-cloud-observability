@@ -7,6 +7,8 @@ locals {
   region    = data.aws_region.current.region
   partition = data.aws_partition.current.partition
 
+  connection_arn = coalesce(var.existing_connection_arn, try(aws_codeconnections_connection.github[0].arn, null))
+
   pipeline_name = "${var.name}-pipeline"
   pipeline_arn  = "arn:${local.partition}:codepipeline:${local.region}:${local.account}:${local.pipeline_name}"
 

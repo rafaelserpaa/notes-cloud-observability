@@ -7,12 +7,12 @@ output "pipeline_url" {
 }
 
 output "connection_arn" {
-  value = aws_codeconnections_connection.github.arn
+  value = local.connection_arn
 }
 
 output "connection_status" {
   description = "PENDING até alguém autorizar o app da AWS no GitHub pelo console."
-  value       = aws_codeconnections_connection.github.connection_status
+  value       = data.aws_codestarconnections_connection.github.connection_status
 }
 
 output "state_bucket" {

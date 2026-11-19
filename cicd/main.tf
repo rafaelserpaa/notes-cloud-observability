@@ -6,6 +6,7 @@ module "cicd" {
 
   name                       = "notas"
   github_repository          = var.github_repository
+  existing_connection_arn    = var.existing_connection_arn
   branch                     = var.branch
   notification_emails        = var.notification_emails
   require_manual_approval    = var.require_manual_approval
