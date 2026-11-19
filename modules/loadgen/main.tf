@@ -11,7 +11,6 @@ resource "aws_ecs_task_definition" "this" {
   memory                   = tostring(var.memory)
   execution_role_arn       = var.execution_role_arn
 
-
   runtime_platform {
     operating_system_family = "LINUX"
     cpu_architecture        = "X86_64"

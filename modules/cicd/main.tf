@@ -17,8 +17,6 @@ locals {
   app_ecr_repository_arn = "arn:${local.partition}:ecr:${local.region}:${local.account}:repository/${var.app_ecr_repository_name}"
   obs_ecr_repository_arn = "arn:${local.partition}:ecr:${local.region}:${local.account}:repository/${var.obs_ecr_repository_prefix}/*"
 
-  # Cada projeto do CodeBuild: role (menor privilégio por tipo de trabalho),
-  # modo privilegiado (Docker), timeout e grupos de relatório.
   projects = {
     seguranca = {
       description = "Fitness functions de segurança: gitleaks (histórico), pip-audit (SCA) e Bandit (SAST)"

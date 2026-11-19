@@ -1,15 +1,3 @@
-# Etapa Imagem (apostila, Seções 5 e 8): constrói as imagens app e loadgen,
-# aplica as fitness functions sobre o ARTEFATO e só então publica no ECR.
-#
-#   não-root     -> a imagem não pode rodar como root
-#   Bandit       -> SAST no app.py empacotado (aceite do B104 em security/bandit-baseline.json)
-#   pip-audit    -> SCA no ambiente Python completo da imagem (base + este repositório)
-#   Trivy        -> falha com CVE CRÍTICA que já tem correção (pacotes do SO e bibliotecas)
-#   push         -> tag = início do SHA do commit (ECR IMMUTABLE)
-#   saída        -> imagedefinitions.json e image-tags.json
-#
-# Projeto: notas-imagem (Privileged ligado). Variáveis do projeto:
-#   ECR_REPOSITORY_URI, CONTAINER_NAME, DOCKERHUB_SECRET_ID (opcional)
 version: 0.2
 
 env:
@@ -20,7 +8,6 @@ env:
     TRIVY_NO_PROGRESS: "true"
     TRIVY_IGNOREFILE: ".trivyignore.yaml"
     TRIVY_SCANNERS: "vuln"
-    # Base de CVEs pelo ECR Public: evita o limite de downloads do ghcr.io.
     TRIVY_DB_REPOSITORY: "public.ecr.aws/aquasecurity/trivy-db:2"
   exported-variables:
     - IMAGE_TAG
@@ -66,8 +53,6 @@ phases:
 
   build:
     commands:
-      # Reexecução do mesmo commit: o ECR é IMMUTABLE, então reaproveita (e verifica
-      # de novo) a imagem já publicada em vez de tentar sobrescrever a tag.
       - |
         set -eo pipefail
         exists() { aws ecr describe-images --repository-name "$REPO_NAME" --image-ids imageTag="$1" >/dev/null 2>&1; }
@@ -78,7 +63,6 @@ phases:
           docker pull --quiet "$LOADGEN_IMAGE"
         else
           export REUSE=0
-          # Sem attestations: o ECR IMMUTABLE prenderia a tag num manifesto sem imagem.
           BUILDX_FLAGS=""
           docker buildx version >/dev/null 2>&1 && BUILDX_FLAGS="--provenance=false --sbom=false"
           for target in app loadgen; do
@@ -90,7 +74,6 @@ phases:
           done
         fi
 
-      # Fitness: imagens não rodam como root.
       - |
         set -eo pipefail
         for image in "$APP_IMAGE" "$LOADGEN_IMAGE"; do
@@ -101,8 +84,6 @@ phases:
           esac
         done
 
-      # Bandit no código que vai para produção. O B104 (bind em 0.0.0.0) é um aceite
-      # consciente registrado no baseline; qualquer achado NOVO médio/alto falha.
       - |
         set -eo pipefail
         rm -rf build && mkdir -p build/app-src build/site-packages
@@ -112,10 +93,8 @@ phases:
         docker rm "$cid" >/dev/null
         /opt/tools/bin/bandit -r build/app-src -ll -b security/bandit-baseline.json
 
-      # pip-audit no ambiente Python inteiro da imagem (inclui o que veio da base).
       - /opt/tools/bin/pip-audit --path build/site-packages/python3*/site-packages --strict --desc on --progress-spinner off
 
-      # Trivy: relatório HIGH/CRITICAL no log; o portão é CVE crítica com correção.
       - |
         set -eo pipefail
         mkdir -p reports
@@ -128,7 +107,6 @@ phases:
             --output "reports/trivy-${name}.xml" "$image"
         done
 
-      # Último comando da fase: só roda se todas as verificações acima passaram.
       - |
         set -eo pipefail
         if [ "$REUSE" = "0" ]; then

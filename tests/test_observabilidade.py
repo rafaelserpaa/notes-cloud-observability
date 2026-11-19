@@ -13,13 +13,11 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-# Os spans ficam em memória, sem Collector nem Grafana.
 exporter = InMemorySpanExporter()
 provider = TracerProvider()
 provider.add_span_processor(SimpleSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 
-# Instrumentar antes de importar a aplicação, como faz o opentelemetry-instrument.
 Psycopg2Instrumentor().instrument(enable_commenter=False)
 import app as notas  # noqa: E402
 

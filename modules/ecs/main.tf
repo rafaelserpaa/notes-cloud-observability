@@ -36,7 +36,6 @@ resource "aws_iam_role_policy" "read_db_secret" {
   })
 }
 
-
 resource "aws_ecs_cluster" "this" {
   name = var.cluster_name
 }
@@ -107,8 +106,6 @@ resource "aws_ecs_service" "this" {
 
   health_check_grace_period_seconds = var.health_check_grace_period_seconds
 
-  # Deploy que não estabiliza volta sozinho para a revisão anterior. O pipeline
-  # detecta (a revisão em uso deixa de ser a que o Terraform aplicou) e falha.
   deployment_circuit_breaker {
     enable   = true
     rollback = true

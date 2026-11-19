@@ -11,7 +11,6 @@ resource "aws_vpc" "this" {
   tags = { Name = var.name }
 }
 
-
 resource "aws_subnet" "public" {
   count = length(var.azs)
 

@@ -3,12 +3,10 @@ resource "aws_lb" "this" {
   internal           = false
   load_balancer_type = "application"
 
-  # Descarta cabeçalhos HTTP malformados (request smuggling). Achado do Trivy (AWS-0052).
   drop_invalid_header_fields = true
   security_groups            = [var.security_group_id]
   subnets                    = var.subnet_ids
 }
-
 
 resource "aws_lb_target_group" "this" {
   name        = var.target_group_name
@@ -26,7 +24,6 @@ resource "aws_lb_target_group" "this" {
   }
 }
 
-
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.this.arn
   port              = 443
@@ -39,7 +36,6 @@ resource "aws_lb_listener" "https" {
     target_group_arn = aws_lb_target_group.this.arn
   }
 }
-
 
 resource "aws_route53_record" "origin" {
   zone_id = var.zone_id

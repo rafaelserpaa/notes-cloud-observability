@@ -8,8 +8,5 @@ terraform {
     }
   }
 
-  # Estado remoto no bucket criado por cicd/ (lock nativo do S3, use_lockfile).
-  # Configuração parcial: terraform init -backend-config=backend.hcl
-  # (veja backend.hcl.example e CICD.md).
   backend "s3" {}
 }

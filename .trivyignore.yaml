@@ -1,9 +1,3 @@
-# Exceções formais do Trivy (opção C da dinâmica da apostila): cada achado aceito
-# tem justificativa, escopo (arquivo) e prazo. Vencido o prazo, o achado volta a
-# derrubar o pipeline e alguém precisa decidir de novo.
-#
-# Responsável: dono do repositório (CODEOWNERS). Revisar em: 2027-05-19.
-
 misconfigurations:
   - id: AWS-0053
     paths:

@@ -56,7 +56,6 @@ output "log_group_name" {
   value = module.ecs.log_group_name
 }
 
-
 output "grafana_url" {
   description = "Grafana (só abre a partir de grafana_allowed_cidrs). Login: admin."
   value       = var.enable_observability ? module.observability[0].grafana_url : null

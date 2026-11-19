@@ -1,6 +1,3 @@
-# Stack do pipeline (bootstrap). Fica separada da stack principal de propósito:
-# o pipeline aplica a stack principal, e a role de deploy não consegue alterar
-# o próprio pipeline, as roles dele nem o bucket de estado.
 module "cicd" {
   source = "../modules/cicd"
 

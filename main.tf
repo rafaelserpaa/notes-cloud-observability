@@ -165,7 +165,6 @@ module "cloudfront" {
   zone_id            = data.aws_route53_zone.this.zone_id
 }
 
-
 module "obs_image_repos" {
   source   = "./modules/ecr"
   for_each = var.enable_observability ? var.obs_backend_images : {}

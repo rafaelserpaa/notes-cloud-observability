@@ -12,14 +12,12 @@ resource "aws_rds_cluster" "this" {
   database_name      = var.database_name
   port               = 5432
 
-
   master_username             = var.master_username
   manage_master_user_password = true
 
   db_subnet_group_name   = aws_db_subnet_group.this.name
   vpc_security_group_ids = [var.security_group_id]
   storage_encrypted      = true
-
 
   enable_http_endpoint = var.enable_data_api
 
@@ -37,7 +35,6 @@ resource "aws_rds_cluster" "this" {
   }
 }
 
-
 resource "aws_rds_cluster_instance" "writer" {
   identifier          = "${var.cluster_identifier}-instance-1"
   cluster_identifier  = aws_rds_cluster.this.id
@@ -48,7 +45,6 @@ resource "aws_rds_cluster_instance" "writer" {
   publicly_accessible = false
   promotion_tier      = 0
 }
-
 
 resource "aws_rds_cluster_instance" "reader" {
   count = var.create_reader ? 1 : 0

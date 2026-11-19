@@ -1,12 +1,3 @@
-# Etapa Plano: terraform plan da stack principal com a imagem do commit.
-#
-# Roda com a role notas-codebuild-plan, que só LÊ a conta (mais o estado e o
-# tfvars). O plano salvo vai como artefato (bucket com KMS) e é exatamente o que
-# o deploy aplica depois da aprovação. Fitness function extra: o pipeline nunca
-# destrói nem substitui o banco ou o repositório de imagens.
-#
-# Variáveis do projeto: TF_STATE_BUCKET, TF_STATE_KEY, TF_STATE_KMS_KEY_ID,
-# TFVARS_SECRET_ID, TF_VAR_iam_permissions_boundary_arn.
 version: 0.2
 
 env:
@@ -16,7 +7,6 @@ env:
     TERRAFORM_SHA256: "4638628058e71a55212b1c563712eac03b902128f40740f3dc8174df12135061"
     TF_IN_AUTOMATION: "1"
     TF_INPUT: "0"
-    # Tipos que o pipeline nunca pode destruir/substituir (dados e imagens).
     PROTECTED_TYPES: "aws_rds_cluster aws_ecr_repository"
   exported-variables:
     - PLAN_SUMMARY
@@ -40,8 +30,6 @@ phases:
         COMMIT="${COMMIT_ID:-$CODEBUILD_RESOLVED_SOURCE_VERSION}"
         export IMAGE_TAG="${COMMIT:0:7}"
         export BUILD_URL="$CODEBUILD_BUILD_URL"
-        # O tfvars (e-mails, IP do Grafana, webhook do Discord) vem do Secrets
-        # Manager e nunca aparece no log nem no artefato.
         ( umask 077
           aws secretsmanager get-secret-value --secret-id "$TFVARS_SECRET_ID" \
             --query SecretString --output text > terraform.tfvars )

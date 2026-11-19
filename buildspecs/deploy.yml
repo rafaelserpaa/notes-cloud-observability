@@ -1,16 +1,3 @@
-# Etapa Deploy: aplica o plano aprovado e confere o resultado (SEC11-BP06:
-# ninguém faz deploy à mão; o pipeline é o único caminho).
-#
-#   1. espelha no ECR as imagens de terceiros do backend de observabilidade
-#      (a EC2 privada, sem NAT, só puxa do ECR)
-#   2. terraform apply do tfplan salvo na etapa Plano (nada além do que foi aprovado;
-#      se o estado mudou nesse meio-tempo, o Terraform recusa o plano "stale")
-#   3. fitness functions holísticas pós-deploy:
-#      - o service estabiliza NA REVISÃO que o Terraform aplicou (o circuit breaker
-#        do ECS faz rollback sozinho; aqui o pipeline fica vermelho se isso ocorrer)
-#      - /health pela URL pública (CloudFront -> ALB -> task -> Aurora) com banco ok
-#
-# Variáveis do projeto: as mesmas do plan + DOCKERHUB_SECRET_ID (opcional).
 version: 0.2
 
 env:
@@ -64,8 +51,6 @@ phases:
 
   build:
     commands:
-      # 1. Espelho Docker Hub -> ECR (só linux/amd64; tags existentes são puladas).
-      #    A lista sai do próprio plano aprovado (output obs_image_mirror).
       - |
         set -eo pipefail
         terraform show -json tfplan \
@@ -84,10 +69,8 @@ phases:
           docker push --quiet "$target"
         done < /tmp/mirror.txt
 
-      # 2. Exatamente o plano aprovado.
       - terraform apply -input=false -lock-timeout=5m -no-color tfplan
 
-      # 3. Verificações pós-deploy.
       - |
         set -eo pipefail
         CLUSTER="$(terraform output -raw ecs_cluster_name)"
@@ -108,7 +91,6 @@ phases:
         APP_URL="$(terraform output -raw app_url)"
         SMOKE_OK=0
         for i in $(seq 1 "$SMOKE_ATTEMPTS"); do
-          # O Aurora com 0 ACU pode estar pausado: as primeiras tentativas o acordam.
           BODY="$(curl -fsS --max-time 15 "${APP_URL}/health" 2>/dev/null || true)"
           if jq -e '.status == "up" and .database == "ok"' >/dev/null 2>&1 <<<"$BODY"; then
             echo "Smoke test OK (${APP_URL}/health): $(jq -c '{status, database}' <<<"$BODY")"

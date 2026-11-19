@@ -6,8 +6,6 @@ resource "aws_cloudwatch_log_group" "codebuild" {
   kms_key_id        = aws_kms_key.this.arn
 }
 
-# Grupos de relatório criados aqui, com retenção e sem exportação definidas. O nome
-# segue a convenção <projeto>-<chave em reports: no buildspec>.
 resource "aws_codebuild_report_group" "this" {
   for_each = local.report_groups
 
@@ -31,12 +29,10 @@ resource "aws_codebuild_project" "this" {
   encryption_key     = aws_kms_key.this.arn
   project_visibility = "PRIVATE"
 
-  # plan e deploy mexem no estado: nunca dois ao mesmo tempo.
   concurrent_build_limit = contains(["plan", "deploy"], each.key) ? 1 : null
 
   source {
-    type = "CODEPIPELINE"
-    # Fixado no projeto (padrão) ou lido do commit (buildspec_from_repository = true).
+    type      = "CODEPIPELINE"
     buildspec = var.buildspec_from_repository ? "buildspecs/${each.key}.yml" : file("${var.buildspec_dir}/${each.key}.yml")
   }
 

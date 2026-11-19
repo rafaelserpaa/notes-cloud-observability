@@ -32,7 +32,6 @@ resource "aws_vpc_security_group_egress_rule" "grafana_all" {
   cidr_ipv4         = "0.0.0.0/0"
 }
 
-
 resource "aws_security_group" "backend" {
   name        = var.backend_security_group_name
   description = "EC2 de backend - OTLP do sg app, consultas do sg obs-grafana"
@@ -75,7 +74,6 @@ resource "aws_vpc_security_group_egress_rule" "backend_all" {
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 }
-
 
 resource "aws_vpc_security_group_ingress_rule" "endpoint_from_obs" {
   for_each = {
