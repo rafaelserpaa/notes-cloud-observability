@@ -37,13 +37,27 @@ phases:
       - git config --global --add safe.directory "$CODEBUILD_SRC_DIR"
       - git fetch --unshallow --quiet || true
       - echo "Commits no histórico analisado:" "$(git rev-list --count HEAD)"
-      - gitleaks git . --redact --verbose
+      # Os três portões rodam sempre e o build falha no fim, listando quem reprovou:
+      # um achado do pip-audit não esconde um achado do Bandit.
+      - |
+        REPROVADOS=""
 
-      # pip-audit: o que este repositório instala por cima da imagem base. O
-      # ambiente completo da imagem é auditado de novo no buildspecs/imagem.yml.
-      - /opt/tools/bin/pip-audit -r requirements.txt -r requirements-dev.txt --strict --desc on --progress-spinner off
+        echo "==================== gitleaks: segredos em todo o histórico"
+        gitleaks git . --redact --verbose || REPROVADOS="$REPROVADOS gitleaks"
 
-      # Bandit: todo o Python do repositório, fora de tests/ (asserts são esperados lá),
-      # só severidade média ou alta (-ll). O app.py da aplicação vem pronto na imagem
-      # base e é analisado no buildspecs/imagem.yml.
-      - /opt/tools/bin/bandit -r . -x ./tests,./.terraform,./build -ll
+        # pip-audit: o que este repositório instala por cima da imagem base. O
+        # ambiente completo da imagem é auditado de novo no buildspecs/imagem.yml.
+        echo "==================== pip-audit: dependências (SCA)"
+        /opt/tools/bin/pip-audit -r requirements.txt -r requirements-dev.txt --strict --desc on --progress-spinner off \
+          || REPROVADOS="$REPROVADOS pip-audit"
+
+        # Bandit: todo o Python do repositório, fora de tests/ (asserts são esperados lá),
+        # só severidade média ou alta (-ll).
+        echo "==================== Bandit: código (SAST)"
+        /opt/tools/bin/bandit -r . -x ./tests,./.terraform,./build -ll || REPROVADOS="$REPROVADOS bandit"
+
+        if [ -n "$REPROVADOS" ]; then
+          echo "PORTÕES REPROVADOS:$REPROVADOS"
+          exit 1
+        fi
+        echo "Todos os portões de segurança aprovados."
