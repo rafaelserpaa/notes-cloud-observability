@@ -242,44 +242,149 @@ padrão das imagens (`app-2.2.0`) e desfaria o deploy do pipeline.
 
 ## Evidências do laboratório (Tabela 3 da apostila)
 
-| Nº | O que mostrar | Como reproduzir aqui |
-|---|---|---|
-| 1 | Pipeline vermelho com os logs do pip-audit e do Bandit | Troque `flask==3.1.3` por `flask==3.0.3` em `requirements.txt` e push: a ação **Seguranca** fica vermelha com `PYSEC-2026-2151`. Para o Bandit, apague o `security/bandit-baseline.json`: a ação **BuildTrivyEcr** falha com o B104. Depois `git revert` dos dois commits |
-| 2 | Pipeline verde em todas as etapas | Execução normal |
-| 3 | Service com a nova revisão e a imagem com a tag do commit | *ECS > lab-cluster > lab-service > Deployments* e *ECR > labarquiteturanuvem* (tag = 7 primeiros caracteres do SHA) |
-| 4 | Log do gitleaks barrando a chave falsa | `echo 'AWS_ACCESS_KEY_ID=AKIA''Q3EGRSTU7VWXYZ5A' > config_local.py`, commit e push (a chave falsa da apostila; as aspas partidas só evitam que este próprio documento dispare o gitleaks) |
-| 5 | `.gitleaksignore` com a justificativa e o pipeline verde | Apague o arquivo num novo commit (continua vermelho: o segredo está no histórico), crie o `.gitleaksignore` com o Fingerprint do log, como na apostila |
-| 6 | Regressão: Observabilidade vermelha, Imagem e Deploy sem execução | [Passo 9 neste repositório](#passo-9-neste-repositório), logo abaixo |
-| 7 | Relatório de testes do CodeBuild | *CodeBuild > Report groups > notas-observabilidade-fitness* (a execução que falhou no Passo 9 e a que passou depois do revert) |
+A `main` é protegida: cada passo é **um PR mergeado**, e o merge dispara o pipeline. Antes de
+mergear o próximo PR, aprove ou rejeite qualquer execução parada na **Aprovacao**. No modo Queued,
+a execução seguinte espera atrás dela.
 
-### Passo 9 neste repositório
+O código da aplicação vem na imagem base. Para reproduzir os passos 5, 7 e 9 da apostila, que
+mexem no `app.py`, ele entra no repositório na Evidência 1 e passa a ser copiado para a imagem na
+Evidência 2. O código é o mesmo da imagem.
 
-O `app.py` vem pronto na imagem base, então a "otimização" entra copiando um `app.py` alterado por
-cima do original:
+| Nº | Passo | PR | Resultado esperado |
+|---|---|---|---|
+| 1 | 5 | `flask==3.0.3` + `app.py` da imagem na raiz | **Seguranca** vermelha: `PORTÕES REPROVADOS: pip-audit bandit` |
+| 2 e 3 | 7 | `flask==3.1.3` + `# nosec B104` + `COPY app.py` | Tudo verde; nova revisão no ECS com a tag do commit |
+| 4 | 8 | `config_local.py` com a chave falsa | **Seguranca** vermelha no gitleaks |
+| 5 | 8 | remove o arquivo e depois cria o `.gitleaksignore` | vermelho, depois verde |
+| 6 | 9 | `app.py` com a thread | **Observabilidade** vermelha; Imagem e Deploy sem execução |
+| 7 | 10 | revert do PR da Evidência 6 | report group com a execução que falhou e a que passou |
+
+### Evidência 1: pipeline vermelho com pip-audit e Bandit (Passo 5)
 
 ```bash
-# 1. Extraia o app.py da imagem base
-docker create --name notas-tmp rafaelserpa/notas-da-nuvem:1.0.0
+git checkout main && git pull && git checkout -b evidencia-1
+docker create --name notas-tmp --platform linux/amd64 rafaelserpa/notas-da-nuvem:1.0.0
 docker cp notas-tmp:/app/app.py app.py && docker rm notas-tmp
-
-# 2. No app.py: "import threading" no topo; mova o INSERT para salvar_nota(texto) e chame
-#      threading.Thread(target=salvar_nota, args=(texto,)).start()
-#    Na última linha, registre o aceite do B104, como no Passo 7 da apostila
-#    (sem isso o Bandit da etapa Seguranca também fica vermelho):
-#      # O container precisa escutar em todas as interfaces para o ALB alcançar a task.
-#      app.run(host="0.0.0.0", port=APP_PORT)  # nosec B104
-
-# 3. No Dockerfile, no target otel, antes do "USER appuser":
-#      COPY --chmod=644 app.py /app/app.py
-#    e no .dockerignore acrescente a linha:  !app.py
-
-git add app.py Dockerfile .dockerignore
-git commit -m "otimiza POST /notas com thread" && git push
+sed -i '' 's/^flask==3.1.3$/flask==3.0.3/' requirements.txt
+git add app.py requirements.txt && git commit -m "evidencia 1: Flask 3.0.3 e app.py sem aceite do B104"
+git push -u origin evidencia-1     # abra o PR e faça o merge
 ```
 
-Resultado esperado na ação **Observabilidade**: `AssertionError` ("nenhum span do INSERT foi gerado"
-ou "o INSERT não está no mesmo trace da requisição"); Imagem, Plano e Deploy não rodam e o ECS fica
-na revisão anterior. Depois: `git revert HEAD && git push`.
+Na ação **Seguranca**, *View details > Logs*: o bloco do pip-audit mostra
+`flask 3.0.3 PYSEC-2026-2151 3.1.3`, o do Bandit mostra `[B104:hardcoded_bind_all_interfaces]` em
+`./app.py:151`, e o fim do log mostra `PORTÕES REPROVADOS: pip-audit bandit`. **Prints:** o pipeline
+vermelho e os dois trechos do log.
+
+### Evidências 2 e 3: pipeline verde e nova revisão no ECS (Passo 7)
+
+```bash
+git checkout main && git pull && git checkout -b evidencia-2
+sed -i '' 's/^flask==3.0.3$/flask==3.1.3/' requirements.txt
+```
+
+No `app.py`, troque a última linha pelo aceite consciente, como na apostila:
+
+```python
+if __name__ == "__main__":
+    # O container precisa escutar em todas as interfaces para o ALB alcançar a task.
+    app.run(host="0.0.0.0", port=APP_PORT)  # nosec B104
+```
+
+No `Dockerfile`, no target `otel`, logo antes do primeiro `USER appuser`:
+
+```dockerfile
+COPY --chmod=644 app.py /app/app.py
+```
+
+No `.dockerignore`, acrescente a linha `!app.py`. Depois:
+
+```bash
+git add app.py requirements.txt Dockerfile .dockerignore
+git commit -m "evidencia 2: Flask 3.1.3 e aceite consciente do B104"
+git push -u origin evidencia-2     # PR + merge; aprove no e-mail quando chegar
+```
+
+- **Evidência 2:** o pipeline com todas as etapas verdes, depois da aprovação.
+- **Evidência 3:** *ECS > lab-cluster > lab-service > Deployments* com a nova revisão `lab-test:N`;
+  em *Task definitions > lab-test:N > Containers*, a imagem `...labarquiteturanuvem:<sha>`; em
+  *ECR > labarquiteturanuvem*, a mesma tag. Mostre que ela é o início do SHA do merge
+  (`git log -1 --format=%h origin/main` ou o commit na aba *Source* do pipeline).
+
+### Evidência 4: gitleaks barrando a chave falsa (Passo 8)
+
+```bash
+git checkout main && git pull && git checkout -b evidencia-4
+echo 'AWS_ACCESS_KEY_ID=AKIA''Q3EGRSTU7VWXYZ5A' > config_local.py   # chave FALSA da apostila
+git add config_local.py && git commit -m "teste do gitleaks"
+git push -u origin evidencia-4     # PR + merge
+```
+
+Se o GitHub bloquear o push (*push protection*), use o link da mensagem e marque "It's used in
+tests". **Print:** o log da **Seguranca** com `Finding: AWS_ACCESS_KEY_ID=REDACTED`,
+`RuleID: aws-access-token`, a linha `Fingerprint:` e `leaks found: 1`. **Copie o Fingerprint**,
+que é usado na Evidência 5.
+
+### Evidência 5: `.gitleaksignore` e pipeline verde (Passo 8)
+
+```bash
+git checkout main && git pull && git checkout -b evidencia-5a
+git rm config_local.py && git commit -m "remove a chave falsa"
+git push -u origin evidencia-5a    # PR + merge: CONTINUA vermelho (o segredo está no histórico)
+```
+
+```bash
+git checkout main && git pull && git checkout -b evidencia-5b
+cat > .gitleaksignore <<'EOF'
+# Exceção: chave FALSA usada no teste do gitleaks da Aula 14 (nunca foi válida).
+# Responsável: <nome do integrante>. Revisar em: <data>.
+<cole aqui o Fingerprint do log da Evidência 4>
+EOF
+git add .gitleaksignore && git commit -m "excecao formal da chave falsa"
+git push -u origin evidencia-5b    # PR + merge; aprove o deploy
+```
+
+**Prints:** o `.gitleaksignore` aberto no GitHub e o pipeline verde.
+
+### Evidência 6: regressão barrada (Passo 9)
+
+```bash
+git checkout main && git pull && git checkout -b evidencia-6
+```
+
+No `app.py`, acrescente `import threading` junto dos outros imports e troque a rota `criar_nota`:
+
+```python
+def salvar_nota(texto):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO notas (texto) VALUES (%s);", (texto,))
+        conn.commit()
+
+
+@app.route("/notas", methods=["POST"])
+def criar_nota():
+    texto = request.form.get("texto", "").strip()
+    if texto:
+        threading.Thread(target=salvar_nota, args=(texto,)).start()
+    return redirect(url_for("index"))
+```
+
+```bash
+git add app.py && git commit -m "otimiza POST /notas com thread"
+git push -u origin evidencia-6     # PR + merge
+```
+
+**Print:** **Observabilidade** vermelha com
+`AssertionError: nenhum span do INSERT foi gerado: ['POST /notas']`, e Imagem, Plano, Aprovacao e
+Deploy sem execução. O ECS continua na revisão da Evidência 5.
+
+### Evidência 7: relatório da fitness function (Passo 10)
+
+No GitHub, abra o PR da Evidência 6 e clique em **Revert**. Isso cria um PR de revert: mergeie e
+aprove o deploy. Depois, em *CodeBuild > Report groups > notas-observabilidade-fitness*, aparecem
+a execução que falhou (3 testes, 1 ou 2 com falha) e a que passou (3 de 3). **Print:** o relatório.
+A etapa opcional de aprovação manual do Passo 10 já existe (**Aprovacao**); o e-mail e a tela de
+*Review* servem de evidência extra.
 
 ## Registro de exceções
 
