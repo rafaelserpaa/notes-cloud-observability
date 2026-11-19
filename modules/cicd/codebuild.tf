@@ -6,9 +6,8 @@ resource "aws_cloudwatch_log_group" "codebuild" {
   kms_key_id        = aws_kms_key.this.arn
 }
 
-# Grupos de relatório criados aqui (e não pelo CodeBuild na primeira execução):
-# as roles não precisam de codebuild:CreateReportGroup. O nome segue a convenção
-# <projeto>-<chave em reports: no buildspec>.
+# Grupos de relatório criados aqui, com retenção e sem exportação definidas. O nome
+# segue a convenção <projeto>-<chave em reports: no buildspec>.
 resource "aws_codebuild_report_group" "this" {
   for_each = local.report_groups
 

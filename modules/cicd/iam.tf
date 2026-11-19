@@ -55,9 +55,13 @@ data "aws_iam_policy_document" "codebuild_base" {
     ])
   }
 
+  # Com o grupo referenciado pelo nome no buildspec, o CodeBuild chama
+  # CreateReportGroup mesmo quando o grupo já existe; o escopo fica nos grupos
+  # do próprio projeto.
   statement {
     sid = "RelatoriosDeTeste"
     actions = [
+      "codebuild:CreateReportGroup",
       "codebuild:CreateReport",
       "codebuild:UpdateReport",
       "codebuild:BatchPutTestCases",
