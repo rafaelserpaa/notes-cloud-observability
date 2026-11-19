@@ -1,0 +1,3 @@
+# Exceção: chave FALSA usada no teste do gitleaks da Aula 14 (nunca foi válida).
+# Responsável: rafaelserpaa. Revisar em: 2027-05-19.
+c448d32c7bbc9b5edb8c123fb888e6e4f603ccee:config_local.py:aws-access-token:1
