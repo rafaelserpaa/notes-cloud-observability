@@ -1,0 +1,66 @@
+# Fitness function de observabilidade (apostila, Seção 4):
+#   POST /notas precisa gerar o span HTTP e o span do INSERT no MESMO trace,
+#   e o texto da nota não pode vazar para a telemetria.
+#
+# O teste roda no target `test` do Dockerfile, ou seja, contra o app.py e as
+# bibliotecas OpenTelemetry que vão para produção, com um PostgreSQL descartável
+# em outro container. Sem Collector, sem Grafana.
+#
+# Projeto: notas-observabilidade (Privileged ligado: sobe containers).
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    POSTGRES_IMAGE: "public.ecr.aws/docker/library/postgres:16-alpine"
+    DB_NAME: "notasdb"
+    DB_USER: "notas_app"
+
+phases:
+  pre_build:
+    commands:
+      # Docker Hub (imagem base): login opcional para fugir do limite de pulls anônimos.
+      - |
+        if [ -n "${DOCKERHUB_SECRET_ID:-}" ] && CRED=$(aws secretsmanager get-secret-value --secret-id "$DOCKERHUB_SECRET_ID" --query SecretString --output text 2>/dev/null); then
+          jq -r .token <<<"$CRED" | docker login --username "$(jq -r .username <<<"$CRED")" --password-stdin
+          unset CRED
+        else
+          echo "Sem credencial do Docker Hub: pulls anônimos (sujeitos a limite)."
+        fi
+      # Banco descartável: a senha nasce aleatória a cada build e morre com ele.
+      - export DB_PASSWORD="$(openssl rand -hex 16)"
+      - docker network create fitness
+      - >-
+        docker run -d --name fitness-db --network fitness
+        -e POSTGRES_DB="$DB_NAME" -e POSTGRES_USER="$DB_USER" -e POSTGRES_PASSWORD="$DB_PASSWORD"
+        "$POSTGRES_IMAGE"
+      - |
+        for i in $(seq 1 30); do
+          docker exec fitness-db pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 && break
+          sleep 2
+        done
+        docker exec fitness-db pg_isready -U "$DB_USER" -d "$DB_NAME"
+
+  build:
+    commands:
+      - docker build --platform linux/amd64 --target test -t notas-fitness:ci .
+      - mkdir -p reports && chmod 777 reports
+      - >-
+        docker run --rm --network fitness
+        -e DB_HOST=fitness-db -e DB_PORT=5432
+        -e DB_NAME="$DB_NAME" -e DB_USER="$DB_USER" -e DB_PASSWORD="$DB_PASSWORD"
+        -v "$CODEBUILD_SRC_DIR/reports:/reports"
+        notas-fitness:ci
+
+  post_build:
+    commands:
+      - docker rm -f fitness-db >/dev/null 2>&1 || true
+
+# Histórico das execuções em CodeBuild > Report groups > notas-observabilidade-fitness
+# (Evidência 7: a execução que falhou e a que passou depois do revert).
+reports:
+  fitness:
+    base-directory: reports
+    files:
+      - junit-observabilidade.xml
+    file-format: JUNITXML

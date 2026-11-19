@@ -1,0 +1,95 @@
+# Etapa Plano: terraform plan da stack principal com a imagem do commit.
+#
+# Roda com a role notas-codebuild-plan, que só LÊ a conta (mais o estado e o
+# tfvars). O plano salvo vai como artefato (bucket com KMS) e é exatamente o que
+# o deploy aplica depois da aprovação. Fitness function extra: o pipeline nunca
+# destrói nem substitui o banco ou o repositório de imagens.
+#
+# Variáveis do projeto: TF_STATE_BUCKET, TF_STATE_KEY, TF_STATE_KMS_KEY_ID,
+# TFVARS_SECRET_ID, TF_VAR_iam_permissions_boundary_arn.
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    TERRAFORM_VERSION: "1.17.1"
+    TERRAFORM_SHA256: "4638628058e71a55212b1c563712eac03b902128f40740f3dc8174df12135061"
+    TF_IN_AUTOMATION: "1"
+    TF_INPUT: "0"
+    # Tipos que o pipeline nunca pode destruir/substituir (dados e imagens).
+    PROTECTED_TYPES: "aws_rds_cluster aws_ecr_repository"
+  exported-variables:
+    - PLAN_SUMMARY
+    - BUILD_URL
+
+phases:
+  install:
+    commands:
+      - |
+        set -eo pipefail
+        curl -sSfL -o /tmp/terraform.zip \
+          "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+        echo "${TERRAFORM_SHA256}  /tmp/terraform.zip" | sha256sum -c -
+        unzip -o -q /tmp/terraform.zip terraform -d /usr/local/bin
+        terraform version
+
+  pre_build:
+    commands:
+      - |
+        set -eo pipefail
+        COMMIT="${COMMIT_ID:-$CODEBUILD_RESOLVED_SOURCE_VERSION}"
+        export IMAGE_TAG="${COMMIT:0:7}"
+        export BUILD_URL="$CODEBUILD_BUILD_URL"
+        # O tfvars (e-mails, IP do Grafana, webhook do Discord) vem do Secrets
+        # Manager e nunca aparece no log nem no artefato.
+        ( umask 077
+          aws secretsmanager get-secret-value --secret-id "$TFVARS_SECRET_ID" \
+            --query SecretString --output text > terraform.tfvars )
+        terraform init -input=false -lockfile=readonly -no-color \
+          -backend-config="bucket=${TF_STATE_BUCKET}" \
+          -backend-config="key=${TF_STATE_KEY}" \
+          -backend-config="region=${AWS_REGION}" \
+          -backend-config="encrypt=true" \
+          -backend-config="kms_key_id=${TF_STATE_KMS_KEY_ID}" \
+          -backend-config="use_lockfile=true"
+
+  build:
+    commands:
+      - |
+        set -eo pipefail
+        terraform plan -input=false -lock-timeout=5m -no-color -out=tfplan \
+          -var "image_tag=${IMAGE_TAG}" \
+          -var "otel_image_tag=${IMAGE_TAG}" \
+          -var "loadgen_image_tag=loadgen-${IMAGE_TAG}"
+        terraform show -no-color tfplan > plan.txt
+      - |
+        set -eo pipefail
+        terraform show -json tfplan > /tmp/plan.json
+        count() { jq "[.resource_changes[]? | select(.change.actions == $1)] | length" /tmp/plan.json; }
+        ADD=$(count '["create"]'); CHANGE=$(count '["update"]'); DESTROY=$(count '["delete"]')
+        REPLACE=$(jq '[.resource_changes[]? | select((.change.actions | index("delete")) and (.change.actions | index("create")))] | length' /tmp/plan.json)
+        export PLAN_SUMMARY="Plano: ${ADD} a criar, ${CHANGE} a alterar, ${REPLACE} a substituir, ${DESTROY} a destruir"
+        echo "$PLAN_SUMMARY"
+
+        PROTECTED=$(jq -r --arg types "$PROTECTED_TYPES" '
+          ($types | split(" ")) as $t
+          | .resource_changes[]?
+          | select(.type as $x | $t | index($x))
+          | select(.change.actions | index("delete"))
+          | "\(.address) (\(.change.actions | join("+")))"' /tmp/plan.json)
+        if [ -n "$PROTECTED" ]; then
+          echo "ERRO: o plano destrói/substitui recursos protegidos:"
+          echo "$PROTECTED"
+          echo "Faça essa mudança fora do pipeline, de forma consciente."
+          exit 1
+        fi
+
+  post_build:
+    commands:
+      - rm -f terraform.tfvars /tmp/plan.json
+
+artifacts:
+  files:
+    - tfplan
+    - plan.txt
+  discard-paths: yes

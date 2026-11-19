@@ -4,7 +4,8 @@ resource "aws_cloudwatch_log_group" "this" {
 }
 
 resource "aws_iam_role" "execution" {
-  name = var.execution_role_name
+  name                 = var.execution_role_name
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -105,6 +106,13 @@ resource "aws_ecs_service" "this" {
   launch_type     = "FARGATE"
 
   health_check_grace_period_seconds = var.health_check_grace_period_seconds
+
+  # Deploy que não estabiliza volta sozinho para a revisão anterior. O pipeline
+  # detecta (a revisão em uso deixa de ser a que o Terraform aplicou) e falha.
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
 
   network_configuration {
     subnets          = var.subnet_ids

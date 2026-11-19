@@ -267,6 +267,12 @@ variable "discord_webhook_url" {
   }
 }
 
+variable "iam_permissions_boundary_arn" {
+  description = "Permission boundary aplicado às roles criadas aqui. O pipeline (cicd/) passa o da policy notas-workload-boundary; a role de deploy só cria roles com ele. null = sem boundary (uso local)."
+  type        = string
+  default     = null
+}
+
 variable "simulate_db_failure" {
   description = "Passo 9: true remove a regra 5432 do sg db e derruba o SLI. Volte para false para desfazer."
   type        = bool

@@ -27,6 +27,12 @@ variable "execution_role_name" {
   type = string
 }
 
+variable "permissions_boundary_arn" {
+  description = "Permission boundary da execution role (null = sem boundary)."
+  type        = string
+  default     = null
+}
+
 variable "image" {
   description = "URI completa da imagem, com tag."
   type        = string

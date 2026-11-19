@@ -2,8 +2,11 @@ resource "aws_lb" "this" {
   name               = var.name
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [var.security_group_id]
-  subnets            = var.subnet_ids
+
+  # Descarta cabeçalhos HTTP malformados (request smuggling). Achado do Trivy (AWS-0052).
+  drop_invalid_header_fields = true
+  security_groups            = [var.security_group_id]
+  subnets                    = var.subnet_ids
 }
 
 

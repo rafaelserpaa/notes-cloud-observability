@@ -10,19 +10,26 @@ e Grafana) em duas EC2.
 | Documento | Para quê |
 |---|---|
 | [GUIA.md](GUIA.md) | Passo a passo do lab: subir, tirar os 13 prints na ordem, simular a falha, destruir |
+| [CICD.md](CICD.md) | Pipeline de CI/CD (Aula 14): CodePipeline + CodeBuild com gitleaks, pip-audit, Bandit, Trivy, tflint e a fitness function de observabilidade; bootstrap, evidências e exceções |
 
 ## Estrutura
 
 ```
 .
-├── versions.tf               # Terraform >= 1.6, provider AWS ~> 6.0, backend S3 (comentado)
+├── versions.tf               # Terraform >= 1.10, provider AWS ~> 6.0, backend S3 (parcial: backend.hcl)
 ├── providers.tf              # região, trava de conta, default_tags
 ├── variables.tf              # padrões = valores da documentação
 ├── main.tf                   # composição dos módulos
 ├── outputs.tf
 ├── terraform.tfvars.example
-├── Dockerfile                # targets app (Notas da Nuvem + OTel) e loadgen
+├── backend.hcl.example       # estado remoto (bucket criado por cicd/)
+├── Dockerfile                # targets test (fitness function), app (Notas da Nuvem + OTel) e loadgen
+├── requirements*.txt         # dependências fixadas (lidas pelo pip-audit)
 ├── loadgen/loadgen.py        # gerador de tráfego
+├── buildspecs/               # CodeBuild: seguranca, iac, observabilidade, imagem, plan, deploy
+├── tests/                    # fitness function de observabilidade (OpenTelemetry)
+├── ci/ · security/           # ferramentas de CI com hashes · baseline do Bandit
+├── cicd/                     # stack do pipeline (estado próprio): CodePipeline, CodeBuild, IAM, KMS, S3
 ├── scripts/
 │   ├── build-push.sh         # builda e envia app-2.2.0 e loadgen-1.1.0
 │   └── mirror-images.sh      # copia as imagens do backend de observabilidade para o ECR (linux/amd64)
@@ -40,10 +47,12 @@ e Grafana) em duas EC2.
     ├── observability/        # EC2 Grafana (pública) + EC2 backend (privada: Collector, Prometheus, Tempo, Loki, Alertmanager)
     │   ├── config/           #   configs de cada componente, regras de alerta e dashboard de SLI
     │   └── templates/        #   user_data das duas instâncias
-    └── loadgen/              # service extra notas-loadgen (1 task que gera tráfego e logs)
+    ├── loadgen/              # service extra notas-loadgen (1 task que gera tráfego e logs)
+    └── cicd/                 # pipeline da Aula 14 (usado só por cicd/)
 ```
 
-O `Dockerfile` é multistage sobre a imagem pública `rafaelserpa/notas-da-nuvem:1.0.0`.
+O `Dockerfile` é multistage sobre a imagem pública `rafaelserpa/notas-da-nuvem:1.0.0`, fixada
+por digest. As imagens de runtime saem sem pip e com os pacotes do SO atualizados ([CICD.md](CICD.md#a-imagem)).
 
 ## Dependências entre módulos
 
@@ -64,19 +73,25 @@ ao target group e a instância writer do Aurora está disponível.
 
 ## Pré-requisitos
 
-- Terraform >= 1.6 e credenciais da conta (`aws configure` / SSO).
+- Terraform >= 1.10 e credenciais da conta (`aws configure` / SSO).
 - O domínio `labdenuvemarquiteturavinicius.click` com **hosted zone pública** no
   Route 53 (já existe, foi criada no registro do domínio; o código só a lê).
 - Docker, para buildar e enviar a imagem.
 
 ## Como subir
 
+**Caminho principal: o pipeline.** Depois do bootstrap descrito em [CICD.md](CICD.md#como-subir-bootstrap-uma-vez),
+cada push na `main` passa pelos portões de segurança e observabilidade, publica a imagem com a tag do
+commit e aplica a infraestrutura com `terraform apply` revisado. O roteiro abaixo é o deploy manual,
+sem pipeline (útil para entender as fases).
+
+O estado fica no bucket S3 criado por `cicd/` (`terraform -chdir=cicd output -raw backend_config > backend.hcl`).
 O ECS precisa da imagem no ECR antes de iniciar as tasks, então o primeiro
 deploy é em duas fases.
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars   # preencha budget_emails
-terraform init
+terraform init -backend-config=backend.hcl
 
 # Fase 1 — só o repositório
 terraform apply -target=module.ecr

@@ -1,0 +1,2 @@
+# Ferramentas de teste (target test do Dockerfile). Não vão para a imagem de produção.
+pytest==9.1.0

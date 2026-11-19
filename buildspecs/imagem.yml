@@ -1,0 +1,157 @@
+# Etapa Imagem (apostila, Seções 5 e 8): constrói as imagens app e loadgen,
+# aplica as fitness functions sobre o ARTEFATO e só então publica no ECR.
+#
+#   não-root     -> a imagem não pode rodar como root
+#   Bandit       -> SAST no app.py empacotado (aceite do B104 em security/bandit-baseline.json)
+#   pip-audit    -> SCA no ambiente Python completo da imagem (base + este repositório)
+#   Trivy        -> falha com CVE CRÍTICA que já tem correção (pacotes do SO e bibliotecas)
+#   push         -> tag = início do SHA do commit (ECR IMMUTABLE)
+#   saída        -> imagedefinitions.json e image-tags.json
+#
+# Projeto: notas-imagem (Privileged ligado). Variáveis do projeto:
+#   ECR_REPOSITORY_URI, CONTAINER_NAME, DOCKERHUB_SECRET_ID (opcional)
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    TRIVY_VERSION: "0.76.1"
+    TRIVY_SHA256: "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"
+    TRIVY_NO_PROGRESS: "true"
+    TRIVY_IGNOREFILE: ".trivyignore.yaml"
+    TRIVY_SCANNERS: "vuln"
+    # Base de CVEs pelo ECR Public: evita o limite de downloads do ghcr.io.
+    TRIVY_DB_REPOSITORY: "public.ecr.aws/aquasecurity/trivy-db:2"
+  exported-variables:
+    - IMAGE_TAG
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - |
+        set -eo pipefail
+        curl -sSfL -o /tmp/trivy.tar.gz \
+          "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+        echo "${TRIVY_SHA256}  /tmp/trivy.tar.gz" | sha256sum -c -
+        mkdir -p /opt/trivy && tar -xzf /tmp/trivy.tar.gz -C /opt/trivy
+        ln -sf /opt/trivy/trivy /usr/local/bin/trivy
+        trivy --version | head -1
+      - python -m venv /opt/tools
+      - /opt/tools/bin/pip install --quiet --disable-pip-version-check --require-hashes -r ci/requirements-tools.txt
+
+  pre_build:
+    commands:
+      - |
+        set -eo pipefail
+        : "${ECR_REPOSITORY_URI:?defina ECR_REPOSITORY_URI no projeto do CodeBuild}"
+        : "${CONTAINER_NAME:?defina CONTAINER_NAME no projeto do CodeBuild}"
+        COMMIT="${COMMIT_ID:-$CODEBUILD_RESOLVED_SOURCE_VERSION}"
+        export IMAGE_TAG="${COMMIT:0:7}"
+        export LOADGEN_TAG="loadgen-${IMAGE_TAG}"
+        export APP_IMAGE="${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+        export LOADGEN_IMAGE="${ECR_REPOSITORY_URI}:${LOADGEN_TAG}"
+        export REPO_NAME="${ECR_REPOSITORY_URI#*/}"
+        echo "Commit ${COMMIT} -> ${APP_IMAGE} e ${LOADGEN_IMAGE}"
+        aws ecr get-login-password --region "$AWS_REGION" \
+          | docker login --username AWS --password-stdin "${ECR_REPOSITORY_URI%%/*}"
+      - |
+        if [ -n "${DOCKERHUB_SECRET_ID:-}" ] && CRED=$(aws secretsmanager get-secret-value --secret-id "$DOCKERHUB_SECRET_ID" --query SecretString --output text 2>/dev/null); then
+          jq -r .token <<<"$CRED" | docker login --username "$(jq -r .username <<<"$CRED")" --password-stdin
+          unset CRED
+        else
+          echo "Sem credencial do Docker Hub: pulls anônimos (sujeitos a limite)."
+        fi
+
+  build:
+    commands:
+      # Reexecução do mesmo commit: o ECR é IMMUTABLE, então reaproveita (e verifica
+      # de novo) a imagem já publicada em vez de tentar sobrescrever a tag.
+      - |
+        set -eo pipefail
+        exists() { aws ecr describe-images --repository-name "$REPO_NAME" --image-ids imageTag="$1" >/dev/null 2>&1; }
+        if exists "$IMAGE_TAG" && exists "$LOADGEN_TAG"; then
+          export REUSE=1
+          echo "Imagens deste commit já estão no ECR: reaproveitando."
+          docker pull --quiet "$APP_IMAGE"
+          docker pull --quiet "$LOADGEN_IMAGE"
+        else
+          export REUSE=0
+          # Sem attestations: o ECR IMMUTABLE prenderia a tag num manifesto sem imagem.
+          BUILDX_FLAGS=""
+          docker buildx version >/dev/null 2>&1 && BUILDX_FLAGS="--provenance=false --sbom=false"
+          for target in app loadgen; do
+            if [ "$target" = app ]; then image="$APP_IMAGE"; else image="$LOADGEN_IMAGE"; fi
+            docker build --platform linux/amd64 $BUILDX_FLAGS \
+              --target "$target" \
+              --label "org.opencontainers.image.revision=${COMMIT_ID:-$CODEBUILD_RESOLVED_SOURCE_VERSION}" \
+              -t "$image" .
+          done
+        fi
+
+      # Fitness: imagens não rodam como root.
+      - |
+        set -eo pipefail
+        for image in "$APP_IMAGE" "$LOADGEN_IMAGE"; do
+          user="$(docker image inspect --format '{{.Config.User}}' "$image")"
+          case "$user" in
+            ""|root|0|0:*|root:*) echo "ERRO: $image roda como root (USER='$user')"; exit 1 ;;
+            *) echo "OK: $image roda como '$user'" ;;
+          esac
+        done
+
+      # Bandit no código que vai para produção. O B104 (bind em 0.0.0.0) é um aceite
+      # consciente registrado no baseline; qualquer achado NOVO médio/alto falha.
+      - |
+        set -eo pipefail
+        rm -rf build && mkdir -p build/app-src build/site-packages
+        cid="$(docker create "$APP_IMAGE")"
+        docker cp "$cid:/app/." build/app-src/
+        docker cp "$cid:/opt/venv/lib/." build/site-packages/
+        docker rm "$cid" >/dev/null
+        /opt/tools/bin/bandit -r build/app-src -ll -b security/bandit-baseline.json
+
+      # pip-audit no ambiente Python inteiro da imagem (inclui o que veio da base).
+      - /opt/tools/bin/pip-audit --path build/site-packages/python3*/site-packages --strict --desc on --progress-spinner off
+
+      # Trivy: relatório HIGH/CRITICAL no log; o portão é CVE crítica com correção.
+      - |
+        set -eo pipefail
+        mkdir -p reports
+        for pair in "app=$APP_IMAGE" "loadgen=$LOADGEN_IMAGE"; do
+          name="${pair%%=*}"; image="${pair#*=}"
+          echo ">> Trivy: $image"
+          trivy image --severity HIGH,CRITICAL --format table "$image"
+          trivy image --skip-db-update --severity CRITICAL --ignore-unfixed --exit-code 1 \
+            --format template --template "@/opt/trivy/contrib/junit.tpl" \
+            --output "reports/trivy-${name}.xml" "$image"
+        done
+
+      # Último comando da fase: só roda se todas as verificações acima passaram.
+      - |
+        set -eo pipefail
+        if [ "$REUSE" = "0" ]; then
+          docker push --quiet "$APP_IMAGE"
+          docker push --quiet "$LOADGEN_IMAGE"
+        fi
+        DIGEST="$(aws ecr describe-images --repository-name "$REPO_NAME" --image-ids imageTag="$IMAGE_TAG" \
+          --query 'imageDetails[0].imageDigest' --output text)"
+        echo "Publicado: ${APP_IMAGE} (${DIGEST})"
+        printf '[{"name":"%s","imageUri":"%s"}]\n' "$CONTAINER_NAME" "$APP_IMAGE" > imagedefinitions.json
+        jq -n --arg app "$IMAGE_TAG" --arg loadgen "$LOADGEN_TAG" --arg digest "$DIGEST" \
+          '{otel_image_tag: $app, loadgen_image_tag: $loadgen, app_digest: $digest}' > image-tags.json
+        cat imagedefinitions.json image-tags.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
+    - image-tags.json
+  discard-paths: yes
+
+reports:
+  trivy:
+    base-directory: reports
+    files:
+      - "trivy-*.xml"
+    file-format: JUNITXML

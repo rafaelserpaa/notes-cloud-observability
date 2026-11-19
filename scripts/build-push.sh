@@ -4,12 +4,13 @@
 #
 #   scripts/build-push.sh
 #
-# Variáveis opcionais: APP_TAG, LOADGEN_TAG, BASE_IMAGE, AWS_REGION.
+# Variáveis opcionais: APP_TAG, LOADGEN_TAG, BASE_IMAGE (padrão: o do Dockerfile), AWS_REGION.
+#
+# Com o pipeline (CICD.md) no ar, as imagens são publicadas por ele, com a tag do commit.
 set -euo pipefail
 
 APP_TAG="${APP_TAG:-app-2.2.0}"                 # mesmo valor de var.otel_image_tag
 LOADGEN_TAG="${LOADGEN_TAG:-loadgen-1.1.0}"     # mesmo valor de var.loadgen_image_tag
-BASE_IMAGE="${BASE_IMAGE:-rafaelserpa/notas-da-nuvem:1.0.0}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,7 +31,7 @@ for target in app loadgen; do
   echo ">> $target -> $REPO_URL:$tag"
   docker build --platform linux/amd64 \
     --provenance=false --sbom=false \
-    --build-arg BASE_IMAGE="$BASE_IMAGE" \
+    ${BASE_IMAGE:+--build-arg BASE_IMAGE="$BASE_IMAGE"} \
     --target "$target" \
     -t "$REPO_URL:$tag" \
     "$HERE"

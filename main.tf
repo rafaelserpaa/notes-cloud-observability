@@ -130,7 +130,8 @@ module "ecs" {
   service_name   = var.ecs_service_name
   log_group_name = "/ecs/${var.ecr_repository_name}"
 
-  execution_role_name = "${var.project}-ecsTaskExecutionRole"
+  execution_role_name      = "${var.project}-ecsTaskExecutionRole"
+  permissions_boundary_arn = var.iam_permissions_boundary_arn
 
   image          = local.app_image
   container_name = var.container_name
@@ -182,6 +183,7 @@ module "observability" {
   app_security_group_id      = module.security_groups.app_sg_id
   endpoint_security_group_id = module.security_groups.endpoint_sg_id
   discord_webhook_url        = var.discord_webhook_url
+  permissions_boundary_arn   = var.iam_permissions_boundary_arn
 
   backend_subnet_id     = module.network.app_subnet_ids[0]
   backend_instance_type = var.obs_backend_instance_type

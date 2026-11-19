@@ -1,0 +1,15 @@
+# Quem pode mudar os portões do pipeline (apostila, Seção 9). Com branch protection
+# na main ("Require a pull request" + "Require review from Code Owners"), nenhuma
+# mudança nestes caminhos entra sem revisão. Acrescente os integrantes do grupo.
+/buildspecs/          @rafaelserpaa
+/tests/               @rafaelserpaa
+/ci/                  @rafaelserpaa
+/security/            @rafaelserpaa
+/cicd/                @rafaelserpaa
+/modules/cicd/        @rafaelserpaa
+/Dockerfile           @rafaelserpaa
+/requirements*.txt    @rafaelserpaa
+/.gitleaksignore      @rafaelserpaa
+/.trivyignore.yaml    @rafaelserpaa
+/.tflint.hcl          @rafaelserpaa
+/.github/             @rafaelserpaa

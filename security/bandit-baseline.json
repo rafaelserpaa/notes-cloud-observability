@@ -1,0 +1,24 @@
+{
+  "results": [
+    {
+      "code": "150 if __name__ == \"__main__\":\n151     app.run(host=\"0.0.0.0\", port=APP_PORT)\n",
+      "col_offset": 17,
+      "end_col_offset": 26,
+      "filename": "build/app-src/app.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 605,
+        "link": "https://cwe.mitre.org/data/definitions/605.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible binding to all interfaces.",
+      "line_number": 151,
+      "line_range": [
+        151
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b104_hardcoded_bind_all_interfaces.html",
+      "test_id": "B104",
+      "test_name": "hardcoded_bind_all_interfaces"
+    }
+  ]
+}

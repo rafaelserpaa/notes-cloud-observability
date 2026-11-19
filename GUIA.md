@@ -7,11 +7,14 @@ simular a falha do banco e destruir tudo. A arquitetura e o porquê das escolhas
 **Tempo total:** ~1 h 30 (40 min de deploy, 40 min de prints, 10 min de destroy).
 **Custo:** ~US$ 0,50/h enquanto estiver no ar. Não deixe ligado à toa.
 
+> Com o pipeline da Aula 14 no ar, o deploy (passos 1 a 4 abaixo) é feito por ele a cada push na
+> `main`: veja o [CICD.md](CICD.md). Este guia continua valendo para os prints de observabilidade.
+
 ---
 
 ## 0. Antes de começar
 
-Ferramentas: Terraform ≥ 1.6, AWS CLI com credenciais da conta, Docker (com buildx), `jq`,
+Ferramentas: Terraform ≥ 1.10, AWS CLI com credenciais da conta, Docker (com buildx), `jq`,
 plugin do Session Manager para a AWS CLI.
 
 No `terraform.tfvars`:
@@ -30,7 +33,7 @@ discord_webhook_url   = "https://discord.com/api/webhooks/<id>/<token>"
 ## 1. Subir o ambiente
 
 ```bash
-terraform init
+terraform init -backend-config=backend.hcl   # estado remoto criado por cicd/ (veja CICD.md)
 
 # 1) repositórios no ECR
 terraform apply -target=module.ecr -target=module.obs_image_repos

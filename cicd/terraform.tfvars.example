@@ -1,0 +1,7 @@
+account_id        = "<id-da-conta>"
+github_repository = "<usuario>/notes-cloud-observability"
+
+notification_emails = ["voce@exemplo.com"]
+
+# require_manual_approval   = true   # false = implantação contínua
+# buildspec_from_repository = false  # true = CodeBuild lê buildspecs/*.yml do commit

@@ -1,0 +1,128 @@
+# Etapa Deploy: aplica o plano aprovado e confere o resultado (SEC11-BP06:
+# ninguém faz deploy à mão; o pipeline é o único caminho).
+#
+#   1. espelha no ECR as imagens de terceiros do backend de observabilidade
+#      (a EC2 privada, sem NAT, só puxa do ECR)
+#   2. terraform apply do tfplan salvo na etapa Plano (nada além do que foi aprovado;
+#      se o estado mudou nesse meio-tempo, o Terraform recusa o plano "stale")
+#   3. fitness functions holísticas pós-deploy:
+#      - o service estabiliza NA REVISÃO que o Terraform aplicou (o circuit breaker
+#        do ECS faz rollback sozinho; aqui o pipeline fica vermelho se isso ocorrer)
+#      - /health pela URL pública (CloudFront -> ALB -> task -> Aurora) com banco ok
+#
+# Variáveis do projeto: as mesmas do plan + DOCKERHUB_SECRET_ID (opcional).
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    TERRAFORM_VERSION: "1.17.1"
+    TERRAFORM_SHA256: "4638628058e71a55212b1c563712eac03b902128f40740f3dc8174df12135061"
+    TF_IN_AUTOMATION: "1"
+    TF_INPUT: "0"
+    SMOKE_ATTEMPTS: "20"
+
+phases:
+  install:
+    commands:
+      - |
+        set -eo pipefail
+        curl -sSfL -o /tmp/terraform.zip \
+          "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+        echo "${TERRAFORM_SHA256}  /tmp/terraform.zip" | sha256sum -c -
+        unzip -o -q /tmp/terraform.zip terraform -d /usr/local/bin
+        terraform version
+
+  pre_build:
+    commands:
+      - |
+        set -eo pipefail
+        PLAN_DIR="${CODEBUILD_SRC_DIR_PlanArtifact:?artefato PlanArtifact ausente}"
+        cp "$PLAN_DIR/tfplan" ./tfplan
+        ( umask 077
+          aws secretsmanager get-secret-value --secret-id "$TFVARS_SECRET_ID" \
+            --query SecretString --output text > terraform.tfvars )
+        terraform init -input=false -lockfile=readonly -no-color \
+          -backend-config="bucket=${TF_STATE_BUCKET}" \
+          -backend-config="key=${TF_STATE_KEY}" \
+          -backend-config="region=${AWS_REGION}" \
+          -backend-config="encrypt=true" \
+          -backend-config="kms_key_id=${TF_STATE_KMS_KEY_ID}" \
+          -backend-config="use_lockfile=true"
+      - |
+        set -eo pipefail
+        ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+        aws ecr get-login-password --region "$AWS_REGION" \
+          | docker login --username AWS --password-stdin "${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      - |
+        if [ -n "${DOCKERHUB_SECRET_ID:-}" ] && CRED=$(aws secretsmanager get-secret-value --secret-id "$DOCKERHUB_SECRET_ID" --query SecretString --output text 2>/dev/null); then
+          jq -r .token <<<"$CRED" | docker login --username "$(jq -r .username <<<"$CRED")" --password-stdin
+          unset CRED
+        else
+          echo "Sem credencial do Docker Hub: pulls anônimos (sujeitos a limite)."
+        fi
+
+  build:
+    commands:
+      # 1. Espelho Docker Hub -> ECR (só linux/amd64; tags existentes são puladas).
+      #    A lista sai do próprio plano aprovado (output obs_image_mirror).
+      - |
+        set -eo pipefail
+        terraform show -json tfplan \
+          | jq -r '.planned_values.outputs.obs_image_mirror.value // {} | to_entries[] | "\(.value.source) \(.value.target)"' \
+          > /tmp/mirror.txt
+        while read -r source target; do
+          [ -n "$source" ] || continue
+          repo="${target#*/}"; repo="${repo%:*}"; tag="${target##*:}"
+          if aws ecr describe-images --repository-name "$repo" --image-ids imageTag="$tag" >/dev/null 2>&1; then
+            echo "== $repo:$tag já está no ECR"
+            continue
+          fi
+          echo ">> $source -> $target"
+          docker pull --quiet --platform linux/amd64 "$source"
+          docker tag "$source" "$target"
+          docker push --quiet "$target"
+        done < /tmp/mirror.txt
+
+      # 2. Exatamente o plano aprovado.
+      - terraform apply -input=false -lock-timeout=5m -no-color tfplan
+
+      # 3. Verificações pós-deploy.
+      - |
+        set -eo pipefail
+        CLUSTER="$(terraform output -raw ecs_cluster_name)"
+        SERVICE="$(terraform output -raw ecs_service_name)"
+        EXPECTED="$(terraform output -raw ecs_task_definition_arn)"
+        echo "Aguardando ${SERVICE} estabilizar em ${EXPECTED##*/}..."
+        aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
+        CURRENT="$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+          --query 'services[0].taskDefinition' --output text)"
+        if [ "$CURRENT" != "$EXPECTED" ]; then
+          echo "ERRO: o service está em ${CURRENT##*/}, e não em ${EXPECTED##*/}."
+          echo "O circuit breaker do ECS fez rollback: veja os logs das tasks no CloudWatch."
+          exit 1
+        fi
+        echo "OK: ${SERVICE} estável em ${CURRENT##*/}"
+      - |
+        set -eo pipefail
+        APP_URL="$(terraform output -raw app_url)"
+        SMOKE_OK=0
+        for i in $(seq 1 "$SMOKE_ATTEMPTS"); do
+          # O Aurora com 0 ACU pode estar pausado: as primeiras tentativas o acordam.
+          BODY="$(curl -fsS --max-time 15 "${APP_URL}/health" 2>/dev/null || true)"
+          if jq -e '.status == "up" and .database == "ok"' >/dev/null 2>&1 <<<"$BODY"; then
+            echo "Smoke test OK (${APP_URL}/health): $(jq -c '{status, database}' <<<"$BODY")"
+            SMOKE_OK=1
+            break
+          fi
+          echo "tentativa ${i}/${SMOKE_ATTEMPTS}: $(jq -c '{status, database}' 2>/dev/null <<<"$BODY" || echo 'sem resposta')"
+          sleep 15
+        done
+        if [ "$SMOKE_OK" != "1" ]; then
+          echo "ERRO: ${APP_URL}/health não respondeu com o banco ok."
+          exit 1
+        fi
+
+  post_build:
+    commands:
+      - rm -f terraform.tfvars tfplan /tmp/mirror.txt

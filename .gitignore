@@ -26,3 +26,6 @@ build/
 .DS_Store
 .idea/
 .vscode/
+
+# Backend com ARNs da conta (gerado por cicd/)
+backend.hcl

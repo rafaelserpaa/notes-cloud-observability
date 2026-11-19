@@ -74,16 +74,27 @@ resource "aws_vpc_security_group_ingress_rule" "endpoint_from_app" {
   to_port                      = 443
 }
 
-resource "aws_vpc_security_group_egress_rule" "all" {
-  for_each = {
-    alb      = aws_security_group.alb.id
-    app      = aws_security_group.app.id
-    db       = aws_security_group.db.id
-    endpoint = aws_security_group.endpoint.id
-  }
+# Saída mínima (achado AWS-0104 do Trivy). SG é stateful: as respostas voltam
+# sem regra de saída, então db e endpoint, que só recebem conexões, não têm nenhuma.
+resource "aws_vpc_security_group_egress_rule" "alb_to_app" {
+  security_group_id            = aws_security_group.alb.id
+  description                  = "Encaminhamento e health check para as tasks"
+  referenced_security_group_id = aws_security_group.app.id
+  ip_protocol                  = "tcp"
+  from_port                    = var.app_port
+  to_port                      = var.app_port
+}
 
-  security_group_id = each.value
-  description       = "Saida liberada"
+moved {
+  from = aws_vpc_security_group_egress_rule.all["app"]
+  to   = aws_vpc_security_group_egress_rule.app_all
+}
+
+# As tasks saem para os VPC Endpoints, o Aurora, o Collector e (loadgen) o
+# CloudFront pela internet: exceção registrada em .trivyignore.yaml.
+resource "aws_vpc_security_group_egress_rule" "app_all" {
+  security_group_id = aws_security_group.app.id
+  description       = "Saida das tasks (endpoints, Aurora, Collector, CloudFront)"
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 }

@@ -1,0 +1,9 @@
+# Gere o arquivo real a partir da stack do pipeline:
+#   terraform -chdir=cicd output -raw backend_config > backend.hcl
+#   terraform init -migrate-state -backend-config=backend.hcl
+bucket       = "notas-tfstate-<conta>-us-east-1"
+key          = "notas-da-nuvem/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+kms_key_id   = "arn:aws:kms:us-east-1:<conta>:key/<id>"
+use_lockfile = true

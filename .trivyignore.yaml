@@ -1,0 +1,42 @@
+# Exceções formais do Trivy (opção C da dinâmica da apostila): cada achado aceito
+# tem justificativa, escopo (arquivo) e prazo. Vencido o prazo, o achado volta a
+# derrubar o pipeline e alguém precisa decidir de novo.
+#
+# Responsável: dono do repositório (CODEOWNERS). Revisar em: 2027-05-19.
+
+misconfigurations:
+  - id: AWS-0053
+    paths:
+      - "modules/alb/main.tf"
+    statement: >-
+      ALB público por desenho: é a origem do CloudFront. O sg alb só aceita 443 da
+      prefix list com.amazonaws.global.cloudfront.origin-facing.
+    expired_at: 2027-05-19
+
+  - id: AWS-0011
+    paths:
+      - "modules/cloudfront/main.tf"
+    statement: >-
+      Sem WAF no CloudFront por custo (web ACL + regras) dentro do orçamento do lab.
+      Reavaliar antes de qualquer uso fora da disciplina.
+    expired_at: 2027-05-19
+
+  - id: AWS-0079
+    paths:
+      - "modules/aurora/main.tf"
+    statement: >-
+      O Aurora já é cifrado (storage_encrypted = true) com a chave gerenciada aws/rds.
+      A regra pede uma CMK própria, que não traz ganho para o lab.
+    expired_at: 2027-05-19
+
+  - id: AWS-0104
+    paths:
+      - "modules/security-groups/main.tf"
+      - "modules/observability/security_groups.tf"
+    statement: >-
+      Saída 0.0.0.0/0 só em app, obs-backend e obs-grafana. As subnets privadas não
+      têm rota para a internet (sem NAT): na prática a saída das tasks e do backend
+      fica restrita aos VPC Endpoints e à VPC. O loadgen (sg app, subnet pública)
+      chama o CloudFront e o Grafana baixa a própria imagem e fala com o Discord.
+      alb, db e endpoint já têm saída mínima.
+    expired_at: 2027-05-19

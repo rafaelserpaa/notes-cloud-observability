@@ -23,6 +23,12 @@ variable "discord_webhook_url" {
   sensitive   = true
 }
 
+variable "permissions_boundary_arn" {
+  description = "Permission boundary das roles das EC2 (null = sem boundary)."
+  type        = string
+  default     = null
+}
+
 variable "grafana_secret_name" {
   description = "Nome do secret (Secrets Manager) com a senha do admin do Grafana."
   type        = string
