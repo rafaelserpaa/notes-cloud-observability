@@ -1,4 +1,5 @@
 *
+!app.py
 !loadgen/loadgen.py
 !requirements.txt
 !requirements-dev.txt
