@@ -44,16 +44,16 @@ Qualquer portão vermelho interrompe o pipeline: nada é publicado no ECR nem ap
 
 | Arquivo | Para quê |
 |---|---|
-| [buildspecs/](buildspecs/) | Os seis buildspecs (`seguranca`, `iac`, `observabilidade`, `imagem`, `plan`, `deploy`) |
-| [tests/test_observabilidade.py](tests/test_observabilidade.py) | Fitness function de observabilidade (Seção 4 da apostila + "dica do professor") |
-| [Dockerfile](Dockerfile) | Targets `test` (fitness function), `app` e `loadgen` (runtime sem pip) |
-| [requirements.txt](requirements.txt) / [requirements-dev.txt](requirements-dev.txt) | Dependências fixadas, lidas pelo pip-audit |
-| [ci/requirements-tools.txt](ci/requirements-tools.txt) | pip-audit e Bandit com hashes (`--require-hashes`) |
-| [security/bandit-baseline.json](security/bandit-baseline.json) | Aceite consciente do B104 |
-| [.trivyignore.yaml](.trivyignore.yaml) | Exceções do Trivy, com justificativa e prazo |
-| [.tflint.hcl](.tflint.hcl) | Regras do tflint |
-| [.github/CODEOWNERS](.github/CODEOWNERS) | Quem revisa buildspecs, testes e exceções |
-| [cicd/](cicd/) + [modules/cicd/](modules/cicd/) | Stack Terraform do pipeline (estado próprio) |
+| [buildspecs/](../buildspecs/) | Os seis buildspecs (`seguranca`, `iac`, `observabilidade`, `imagem`, `plan`, `deploy`) |
+| [tests/test_observabilidade.py](../tests/test_observabilidade.py) | Fitness function de observabilidade (Seção 4 da apostila + "dica do professor") |
+| [Dockerfile](../Dockerfile) | Targets `test` (fitness function), `app` e `loadgen` (runtime sem pip) |
+| [requirements.txt](../requirements.txt) / [requirements-dev.txt](../requirements-dev.txt) | Dependências fixadas, lidas pelo pip-audit |
+| [ci/requirements-tools.txt](../ci/requirements-tools.txt) | pip-audit e Bandit com hashes (`--require-hashes`) |
+| [security/bandit-baseline.json](../security/bandit-baseline.json) | Aceite consciente do B104 |
+| [.trivyignore.yaml](../.trivyignore.yaml) | Exceções do Trivy, com justificativa e prazo |
+| [.tflint.hcl](../.tflint.hcl) | Regras do tflint |
+| [.github/CODEOWNERS](../.github/CODEOWNERS) | Quem revisa buildspecs, testes e exceções |
+| [cicd/](../cicd/) + [modules/cicd/](../modules/cicd/) | Stack Terraform do pipeline (estado próprio) |
 
 ## Mapa apostila → implementação
 
@@ -236,7 +236,7 @@ padrão das imagens (`app-2.2.0`) e desfaria o deploy do pipeline.
 | Erro no clone logo no começo do build | Conexão ainda *Pending*, ou role sem `codeconnections:UseConnection` |
 | `Cannot connect to the Docker daemon` | Projeto sem modo privilegiado |
 | `toomanyrequests` ao puxar a imagem base | Limite anônimo do Docker Hub: preencha o segredo `notas/dockerhub` |
-| `AccessDenied` no plan/deploy | Recurso novo fora da lista de serviços das policies `notas-workload-*` ([modules/cicd/iam.tf](modules/cicd/iam.tf)) |
+| `AccessDenied` no plan/deploy | Recurso novo fora da lista de serviços das policies `notas-workload-*` ([modules/cicd/iam.tf](../modules/cicd/iam.tf)) |
 | `Saved plan is stale` | Outra execução aplicou antes: rode *Release change* |
 | Deploy vermelho em "estável em ..." | Tasks não sobem: veja o log group `/ecs/labarquiteturanuvem` |
 

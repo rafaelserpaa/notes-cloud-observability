@@ -2,7 +2,7 @@
 
 Passo a passo para subir o ambiente, tirar os **13 prints** na ordem que dá menos trabalho,
 simular a falha do banco e destruir tudo. A arquitetura e o porquê das escolhas estão no
-[README](README.md); o histórico das mudanças, no [ALTERACOES.md](ALTERACOES.md).
+[README](README.md).
 
 **Tempo total:** ~1 h 30 (40 min de deploy, 40 min de prints, 10 min de destroy).
 **Custo:** ~US$ 0,50/h enquanto estiver no ar. Não deixe ligado à toa.
